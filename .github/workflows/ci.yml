@@ -71,7 +71,7 @@ jobs:
         run: cargo build --release --manifest-path prover/Cargo.toml
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: legion-prover
           path: target/release/legion-prover
