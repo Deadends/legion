@@ -1,9 +1,9 @@
 #[cfg(feature = "nova")]
+use crate::nova_accumulator::{hash_credential, run_legion_nova_auth};
+#[cfg(feature = "nova")]
 use anyhow::Result;
 #[cfg(feature = "nova")]
 use pasta_curves::Fp;
-#[cfg(feature = "nova")]
-use crate::nova_accumulator::{run_legion_nova_auth, hash_credential};
 
 #[cfg(all(test, feature = "nova"))]
 mod tests {
@@ -12,18 +12,16 @@ mod tests {
     #[test]
     fn test_legion_nova_authentication() -> Result<()> {
         println!("🧪 Testing Legion Nova Authentication");
-        
-        let proof = run_legion_nova_auth(
-            b"alice",
-            b"password123", 
-            Fp::from(42u64),
-            Fp::from(0u64),
-            3,
-        )?;
-        
+
+        let proof =
+            run_legion_nova_auth(b"alice", b"password123", Fp::from(42u64), Fp::from(0u64), 3)?;
+
         assert!(!proof.is_empty());
-        println!("✅ Nova authentication proof generated: {} bytes", proof.len());
-        
+        println!(
+            "✅ Nova authentication proof generated: {} bytes",
+            proof.len()
+        );
+
         Ok(())
     }
 }
@@ -31,7 +29,7 @@ mod tests {
 #[cfg(feature = "nova")]
 pub fn demo_working_nova() -> Result<()> {
     println!("🚀 Legion Nova Authentication Demo");
-    
+
     let proof = run_legion_nova_auth(
         b"demo_user",
         b"demo_password",
@@ -39,10 +37,10 @@ pub fn demo_working_nova() -> Result<()> {
         Fp::from(0u64),
         5,
     )?;
-    
+
     println!("✅ Nova authentication completed");
     println!("   Proof size: {} bytes", proof.len());
-    
+
     Ok(())
 }
 

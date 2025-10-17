@@ -1,6 +1,6 @@
 // Audit logging for authentication events
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
 
@@ -29,15 +29,15 @@ pub fn log_auth_attempt(
         client_ip: client_ip.map(|s| s.to_string()),
         error: error.map(|s| s.to_string()),
     };
-    
+
     let log_entry = serde_json::to_string(&attempt)?;
-    
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open("legion_audit.log")?;
-    
+
     writeln!(file, "{}", log_entry)?;
-    
+
     Ok(())
 }

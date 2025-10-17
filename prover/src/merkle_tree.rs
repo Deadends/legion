@@ -1,8 +1,8 @@
-use pasta_curves::Fp;
-use ff::PrimeField;
-use halo2_gadgets::poseidon::{primitives as poseidon};
 use anyhow::Result;
+use ff::PrimeField;
+use halo2_gadgets::poseidon::primitives as poseidon;
 use hex;
+use pasta_curves::Fp;
 
 #[cfg(feature = "rocksdb-storage")]
 use crate::rocksdb_merkle::RocksDBMerkleTree;
@@ -26,62 +26,62 @@ impl AnonymityMerkleTree {
         let rocksdb_tree = RocksDBMerkleTree::new(db_path)?;
         Ok(Self { rocksdb_tree })
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn new_with_rocksdb(_db_path: &str) -> Result<Self> {
         Ok(Self {})
     }
-    
+
     #[cfg(feature = "rocksdb-storage")]
     pub fn add_leaf(&mut self, leaf: Fp) -> Result<usize> {
         self.rocksdb_tree.add_leaf(leaf)
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn add_leaf(&mut self, _leaf: Fp) -> Result<usize> {
         Ok(0)
     }
-    
+
     #[cfg(feature = "rocksdb-storage")]
     pub fn get_proof(&self, index: usize) -> Result<([Fp; MERKLE_DEPTH], Fp)> {
         self.rocksdb_tree.get_proof(index)
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_proof(&self, _index: usize) -> Result<([Fp; MERKLE_DEPTH], Fp)> {
         Ok(([Fp::zero(); MERKLE_DEPTH], Fp::zero()))
     }
-    
+
     #[cfg(feature = "rocksdb-storage")]
     pub fn get_anonymity_set_size(&self) -> usize {
         self.rocksdb_tree.get_anonymity_set_size()
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_anonymity_set_size(&self) -> usize {
         0
     }
-    
+
     #[cfg(feature = "rocksdb-storage")]
     pub fn get_root(&self) -> Fp {
         self.rocksdb_tree.get_root()
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_root(&self) -> Fp {
         Fp::zero()
     }
-    
+
     #[cfg(feature = "rocksdb-storage")]
     pub fn get_leaf_index(&self, leaf: &Fp) -> Option<usize> {
         self.rocksdb_tree.get_leaf_index(leaf)
     }
-    
+
     #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_leaf_index(&self, _leaf: &Fp) -> Option<usize> {
         None
     }
-    
+
     pub fn get_leaves(&self) -> Vec<Fp> {
         vec![]
     }
@@ -90,25 +90,36 @@ impl AnonymityMerkleTree {
         let size = self.get_anonymity_set_size();
         (0..size)
             .map(|i| {
-                let (path, _) = self.get_proof(i).unwrap_or(([Fp::zero(); MERKLE_DEPTH], Fp::zero()));
+                let (path, _) = self
+                    .get_proof(i)
+                    .unwrap_or(([Fp::zero(); MERKLE_DEPTH], Fp::zero()));
                 path.iter().map(|p| hex::encode(p.to_repr())).collect()
             })
             .collect()
     }
 }
 
-pub fn create_test_anonymity_set(user_leaf: Fp, min_size: usize) -> Result<(AnonymityMerkleTree, usize)> {
+pub fn create_test_anonymity_set(
+    user_leaf: Fp,
+    min_size: usize,
+) -> Result<(AnonymityMerkleTree, usize)> {
     let mut tree = AnonymityMerkleTree::new_with_rocksdb("./legion_data/rocksdb_merkle")?;
-    
+
     let current_size = tree.get_anonymity_set_size();
     if current_size < min_size {
         for i in current_size..min_size.saturating_sub(1) {
-            let dummy_leaf = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<1>, WIDTH, RATE>::init()
-                .hash([Fp::from(i as u64 + 1000)]);
+            let dummy_leaf = poseidon::Hash::<
+                _,
+                poseidon::P128Pow5T3,
+                poseidon::ConstantLength<1>,
+                WIDTH,
+                RATE,
+            >::init()
+            .hash([Fp::from(i as u64 + 1000)]);
             tree.add_leaf(dummy_leaf)?;
         }
     }
-    
+
     let user_index = tree.add_leaf(user_leaf)?;
     Ok((tree, user_index))
 }

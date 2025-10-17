@@ -1,10 +1,10 @@
 /// Post-Quantum Digital Signatures (ML-DSA / FIPS 204)
 /// Out-of-circuit verification for practical performance
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use rand::rngs::OsRng;
 
 #[cfg(feature = "post-quantum")]
-use ml_dsa::{SigningKey, VerifyingKey, Signature};
+use ml_dsa::{Signature, SigningKey, VerifyingKey};
 
 /// Generate ML-DSA-65 key pair (NIST Level 3)
 #[cfg(feature = "post-quantum")]
@@ -23,7 +23,8 @@ pub fn generate_ml_dsa_keypair() -> (Vec<u8>, Vec<u8>) {
 /// Sign message with ML-DSA
 #[cfg(feature = "post-quantum")]
 pub fn sign_message(signing_key: &SigningKey, message: &[u8]) -> Result<Vec<u8>> {
-    let signature = signing_key.try_sign(message)
+    let signature = signing_key
+        .try_sign(message)
         .map_err(|e| anyhow::anyhow!("Signing failed: {:?}", e))?;
     Ok(signature.to_vec())
 }
@@ -55,7 +56,7 @@ pub fn verify_signature(
     message: &[u8],
     signature_bytes: &[u8],
 ) -> Result<bool> {
-    use ed25519_dalek::{Verifier, VerifyingKey as Ed25519Key, Signature};
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey as Ed25519Key};
     let key = Ed25519Key::from_bytes(verifying_key.try_into()?)?;
     let sig = Signature::from_bytes(signature_bytes.try_into()?);
     Ok(key.verify(message, &sig).is_ok())
@@ -87,30 +88,33 @@ pub fn deserialize_verifying_key(bytes: &[u8]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_ml_dsa_sign_verify() {
         let (sk, vk) = generate_ml_dsa_keypair();
         let message = b"Test message for ML-DSA";
-        
+
         let signature = sign_message(&sk, message).unwrap();
         let is_valid = verify_signature(&vk, message, &signature).unwrap();
-        
+
         assert!(is_valid);
-        
+
         // Test with wrong message
         let wrong_message = b"Wrong message";
         let is_valid_wrong = verify_signature(&vk, wrong_message, &signature).unwrap();
         assert!(!is_valid_wrong);
     }
-    
+
     #[test]
     fn test_key_serialization() {
         let (_, vk) = generate_ml_dsa_keypair();
-        
+
         let serialized = serialize_verifying_key(&vk);
         let deserialized = deserialize_verifying_key(&serialized).unwrap();
-        
-        assert_eq!(serialize_verifying_key(&vk), serialize_verifying_key(&deserialized));
+
+        assert_eq!(
+            serialize_verifying_key(&vk),
+            serialize_verifying_key(&deserialized)
+        );
     }
 }

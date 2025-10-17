@@ -13,16 +13,16 @@ impl KeyPool {
     pub fn new() -> Result<Self> {
         #[cfg(feature = "redis")]
         {
-            let redis_url = std::env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-            
+            let redis_url =
+                std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
             match redis::Client::open(redis_url) {
                 Ok(client) => match client.get_connection() {
                     Ok(conn) => {
                         let mut pool = Self { conn: Some(conn) };
                         pool.ensure_pool_filled()?;
                         Ok(pool)
-                    },
+                    }
                     Err(_) => Ok(Self { conn: None }),
                 },
                 Err(_) => Ok(Self { conn: None }),
@@ -31,7 +31,7 @@ impl KeyPool {
         #[cfg(not(feature = "redis"))]
         Ok(Self {})
     }
-    
+
     pub fn pop_key(&mut self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
         #[cfg(feature = "redis")]
         {
@@ -40,14 +40,14 @@ impl KeyPool {
                     if data.len() >= 64 {
                         let sk = data[..32].to_vec();
                         let pk = data[32..64].to_vec();
-                        
+
                         // Async refill if pool is low
                         if let Ok(len) = conn.llen::<_, usize>("keypool:ml_dsa") {
                             if len < 10 {
                                 self.refill_pool()?;
                             }
                         }
-                        
+
                         return Ok(Some((sk, pk)));
                     }
                 }
@@ -55,7 +55,7 @@ impl KeyPool {
         }
         Ok(None)
     }
-    
+
     fn ensure_pool_filled(&mut self) -> Result<()> {
         #[cfg(feature = "redis")]
         {
@@ -68,7 +68,7 @@ impl KeyPool {
         }
         Ok(())
     }
-    
+
     fn refill_pool(&mut self) -> Result<()> {
         #[cfg(feature = "redis")]
         {
@@ -78,11 +78,11 @@ impl KeyPool {
                     let mut pk = [0u8; 32];
                     crate::fill_random_bytes(&mut sk)?;
                     crate::fill_random_bytes(&mut pk)?;
-                    
+
                     let mut key_pair = Vec::with_capacity(64);
                     key_pair.extend_from_slice(&sk);
                     key_pair.extend_from_slice(&pk);
-                    
+
                     let _: () = conn.rpush("keypool:ml_dsa", key_pair)?;
                 }
             }

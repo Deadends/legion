@@ -16,57 +16,57 @@
 #![allow(clippy::needless_return)]
 
 // LAYERED ARCHITECTURE
-pub mod auth_circuit;                  // Layer 1: Pure Circuit (Math Only)
 #[cfg(not(target_arch = "wasm32"))]
-pub mod authentication_protocol;       // Layer 2: Protocol Logic
+pub mod application_service;
+pub mod auth_circuit; // Layer 1: Pure Circuit (Math Only)
 #[cfg(not(target_arch = "wasm32"))]
-pub mod application_service;           // Layer 3: Business Logic
+pub mod authentication_protocol; // Layer 2: Protocol Logic // Layer 3: Business Logic
 
 // POST-QUANTUM CRYPTOGRAPHY (Optional - requires 'post-quantum' feature)
 #[cfg(feature = "post-quantum")]
-pub mod pq_forward_secrecy;            // Hybrid ML-KEM + X25519 Forward Secrecy
+pub mod pq_auth_wrapper;
 #[cfg(feature = "post-quantum")]
-pub mod pq_signatures;                 // ML-DSA (FIPS 204) Signatures
+pub mod pq_forward_secrecy; // Hybrid ML-KEM + X25519 Forward Secrecy
 #[cfg(feature = "post-quantum")]
-pub mod pq_auth_wrapper;               // Practical PQ Auth (Native, not in circuits)
+pub mod pq_signatures; // ML-DSA (FIPS 204) Signatures // Practical PQ Auth (Native, not in circuits)
 
 // SPECIALIZED MODULES (Some require additional features)
+#[cfg(not(target_arch = "wasm32"))]
+pub mod enterprise_key_manager; // Key Management
 #[cfg(feature = "nova")]
-pub mod nova_accumulator;              // Recursive Proofs (requires nova feature)
+pub mod nova_accumulator; // Recursive Proofs (requires nova feature)
 #[cfg(not(target_arch = "wasm32"))]
-pub mod oracle_verification;           // Off-circuit Verification
+pub mod oracle_verification; // Off-circuit Verification
 #[cfg(not(target_arch = "wasm32"))]
-pub mod enterprise_key_manager;        // Key Management
-#[cfg(not(target_arch = "wasm32"))]
-pub mod standardized_auth_system;      // Certificate Management
+pub mod standardized_auth_system; // Certificate Management
 
 // SUPPORTING MODULES
+pub mod constraint_verifier;
+pub mod crypto_constants;
+pub mod crypto_helpers; // Shared helpers (server + WASM)
+pub mod device_tree;
+pub mod merkle_tree;
+pub mod params_cache;
+pub mod ring_signature; // Device ring signatures
+pub mod rocksdb_merkle;
 #[cfg(feature = "nova")]
 pub mod test_nova;
-pub mod constraint_verifier;
-pub mod merkle_tree;
-pub mod device_tree;
-pub mod ring_signature;  // Device ring signatures
-pub mod crypto_helpers;  // Shared helpers (server + WASM)
-pub mod rocksdb_merkle;
-pub mod params_cache;
-pub mod crypto_constants;
 
 // SECURITY MODULES
-pub mod input_validator;
 pub mod audit_log;
+pub mod input_validator;
 pub mod key_rotation;
 
 // REDIS OPTIMIZATION LAYER (requires redis feature)
 #[cfg(feature = "redis")]
-pub mod redis_cache;
-#[cfg(feature = "redis")]
-pub mod key_pool;
+pub mod background_nova;
+pub mod background_worker;
 #[cfg(feature = "redis")]
 pub mod bloom_filter;
 #[cfg(feature = "redis")]
-pub mod background_nova;
-pub mod background_worker;
+pub mod key_pool;
+#[cfg(feature = "redis")]
+pub mod redis_cache;
 
 // REAL PROOF GENERATION
 pub mod proof_generator;
@@ -86,29 +86,32 @@ pub mod http_server;
 pub mod webauthn_service;
 
 // Re-export main types
-pub use auth_circuit::{AuthCircuit, AuthConfig, AuthContext};  // Layer 1: Pure Circuit
 #[cfg(not(target_arch = "wasm32"))]
-pub use authentication_protocol::{AuthenticationProtocol, AuthenticationRequest, AuthenticationResult, SecurityLevel, NullifierEntry, cleanup_expired_nullifiers};  // Layer 2: Protocol  
+pub use application_service::{ApplicationService, UserSession}; // Layer 3: Application
+pub use auth_circuit::{AuthCircuit, AuthConfig, AuthContext}; // Layer 1: Pure Circuit
 #[cfg(not(target_arch = "wasm32"))]
-pub use application_service::{ApplicationService, UserSession};  // Layer 3: Application
-pub use webauthn_service::WebAuthnService;  // WebAuthn
-pub use proof_generator::ProofGenerator;  // Proof generation (for WASM)
-pub use session_verifier::SessionVerifier;  // Session binding
+pub use authentication_protocol::{
+    cleanup_expired_nullifiers, AuthenticationProtocol, AuthenticationRequest,
+    AuthenticationResult, NullifierEntry, SecurityLevel,
+}; // Layer 2: Protocol
+#[cfg(not(target_arch = "wasm32"))]
+pub use enterprise_key_manager::*; // Key Management
 #[cfg(feature = "nova")]
-pub use nova_accumulator::*;           // Nova Integration (optional)
+pub use nova_accumulator::*; // Nova Integration (optional)
 #[cfg(not(target_arch = "wasm32"))]
-pub use oracle_verification::*;        // Oracle Verification
+pub use oracle_verification::*; // Oracle Verification
+pub use proof_generator::ProofGenerator; // Proof generation (for WASM)
+pub use session_verifier::SessionVerifier; // Session binding
 #[cfg(not(target_arch = "wasm32"))]
-pub use enterprise_key_manager::*;     // Key Management
-#[cfg(not(target_arch = "wasm32"))]
-pub use standardized_auth_system::*;   // Certificates
+pub use standardized_auth_system::*;
+pub use webauthn_service::WebAuthnService; // WebAuthn // Certificates
 
 // Supporting exports
 pub use constraint_verifier::*;
-pub use merkle_tree::*;
-pub use device_tree::*;  // Device ring signatures
+pub use crypto_helpers::*;
+pub use device_tree::*; // Device ring signatures
 pub use key_rotation::*;
-pub use crypto_helpers::*;  // Export shared helpers
+pub use merkle_tree::*; // Export shared helpers
 
 // Helper functions
 pub fn get_timestamp() -> u64 {

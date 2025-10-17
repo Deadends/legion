@@ -1,15 +1,13 @@
-use halo2_proofs::{
-    plonk::{Expression, VirtualCells},
-};
-use pasta_curves::Fp;
+use anyhow::Result;
 use ff::Field;
+use halo2_proofs::plonk::{Expression, VirtualCells};
+use once_cell::sync::Lazy;
+use pasta_curves::Fp;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use anyhow::Result;
-use once_cell::sync::Lazy;
 
 // REAL INTEGRATION: Global constraint interceptor that hooks into your synthesize() execution
-static CONSTRAINT_INTERCEPTOR: Lazy<Arc<Mutex<ConstraintVerifier>>> = 
+static CONSTRAINT_INTERCEPTOR: Lazy<Arc<Mutex<ConstraintVerifier>>> =
     Lazy::new(|| Arc::new(Mutex::new(ConstraintVerifier::new())));
 
 /// REAL INTEGRATION: Enhanced constraint verification that hooks into your actual synthesize() execution
@@ -47,7 +45,7 @@ impl ConstraintVerifier {
             real_time_violations: Vec::new(),
         }
     }
-    
+
     /// REAL INTEGRATION: Hook that gets called during your synthesize() execution
     pub fn intercept_gate_execution(
         &mut self,
@@ -62,15 +60,15 @@ impl ConstraintVerifier {
             timestamp: std::time::SystemTime::now(),
             constraint_results: Vec::new(),
         };
-        
+
         self.gate_executions
             .entry(gate_name.to_string())
             .or_insert_with(Vec::new)
             .push(execution);
-        
+
         // REAL INTEGRATION: Evaluate constraints in real-time
         self.evaluate_gate_constraints(gate_name, cell_values)?;
-        
+
         Ok(())
     }
 
@@ -83,10 +81,10 @@ impl ConstraintVerifier {
     ) -> Result<()> {
         for (constraint_idx, expr) in expressions.iter().enumerate() {
             self.constraint_count += 1;
-            
+
             // Evaluate the polynomial expression with current witness values
             let evaluation = self.evaluate_expression(expr, virtual_cells)?;
-            
+
             let is_satisfied = evaluation == F::ZERO;
             if is_satisfied {
                 self.satisfied_count += 1;
@@ -102,7 +100,7 @@ impl ConstraintVerifier {
 
             self.constraint_evaluations.push(constraint_eval);
         }
-        
+
         Ok(())
     }
 
@@ -115,33 +113,29 @@ impl ConstraintVerifier {
         match expr {
             Expression::Constant(c) => Ok(*c),
             Expression::Selector(_) => Ok(F::ONE), // Selector is enabled
-            Expression::Fixed(_query) => {
-                Ok(F::ZERO)
-            },
-            Expression::Advice(_query) => {
-                self.get_witness_value(0).map(|fp| self.fp_to_field(fp))
-            },
+            Expression::Fixed(_query) => Ok(F::ZERO),
+            Expression::Advice(_query) => self.get_witness_value(0).map(|fp| self.fp_to_field(fp)),
             Expression::Instance(_query) => {
                 self.get_instance_value(0).map(|fp| self.fp_to_field(fp))
-            },
+            }
             Expression::Negated(inner) => {
                 let inner_val = self.evaluate_expression(inner, virtual_cells)?;
                 Ok(-inner_val)
-            },
+            }
             Expression::Sum(left, right) => {
                 let left_val = self.evaluate_expression(left, virtual_cells)?;
                 let right_val = self.evaluate_expression(right, virtual_cells)?;
                 Ok(left_val + right_val)
-            },
+            }
             Expression::Product(left, right) => {
                 let left_val = self.evaluate_expression(left, virtual_cells)?;
                 let right_val = self.evaluate_expression(right, virtual_cells)?;
                 Ok(left_val * right_val)
-            },
+            }
             Expression::Scaled(inner, scalar) => {
                 let inner_val = self.evaluate_expression(inner, virtual_cells)?;
                 Ok(inner_val * scalar)
-            },
+            }
         }
     }
 
@@ -154,12 +148,12 @@ impl ConstraintVerifier {
             Expression::Advice { .. } => 1,
             Expression::Instance { .. } => 1,
             Expression::Negated(inner) => self.compute_expression_degree(inner),
-            Expression::Sum(left, right) => {
-                self.compute_expression_degree(left).max(self.compute_expression_degree(right))
-            },
+            Expression::Sum(left, right) => self
+                .compute_expression_degree(left)
+                .max(self.compute_expression_degree(right)),
             Expression::Product(left, right) => {
                 self.compute_expression_degree(left) + self.compute_expression_degree(right)
-            },
+            }
             Expression::Scaled(inner, _) => self.compute_expression_degree(inner),
         }
     }
@@ -172,7 +166,8 @@ impl ConstraintVerifier {
     fn get_witness_value(&self, query_index: usize) -> Result<Fp> {
         // Map query_index to actual witness assignment
         // This requires understanding Halo2's query indexing
-        self.witness_assignments.get(&(query_index, 0))
+        self.witness_assignments
+            .get(&(query_index, 0))
             .copied()
             .ok_or_else(|| anyhow::anyhow!("Witness value not found for query {}", query_index))
     }
@@ -198,7 +193,8 @@ impl ConstraintVerifier {
     }
 
     pub fn get_unsatisfied_constraints(&self) -> Vec<&ConstraintEvaluation> {
-        self.constraint_evaluations.iter()
+        self.constraint_evaluations
+            .iter()
             .filter(|eval| !eval.is_satisfied)
             .collect()
     }
@@ -207,11 +203,14 @@ impl ConstraintVerifier {
         let mut degrees = HashMap::new();
         for eval in &self.constraint_evaluations {
             let current_max = degrees.get(&eval.gate_name).copied().unwrap_or(0);
-            degrees.insert(eval.gate_name.clone(), current_max.max(eval.polynomial_degree));
+            degrees.insert(
+                eval.gate_name.clone(),
+                current_max.max(eval.polynomial_degree),
+            );
         }
         degrees
     }
-    
+
     /// REAL INTEGRATION: Track cell assignments as they happen in synthesize()
     pub fn intercept_cell_assignment(
         &mut self,
@@ -227,13 +226,13 @@ impl ConstraintVerifier {
             value,
             timestamp: std::time::SystemTime::now(),
         };
-        
+
         let key = format!("{}:{}:{}", region_name, column_name, row);
         self.cell_assignments.insert(key, cell_info);
-        
+
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Evaluate constraints using actual witness values
     fn evaluate_gate_constraints(
         &mut self,
@@ -242,14 +241,18 @@ impl ConstraintVerifier {
     ) -> Result<()> {
         match gate_name {
             "enterprise_auth_fixed" => self.evaluate_enterprise_auth_constraints(cell_values)?,
-            "commitment_binding_fixed" => self.evaluate_commitment_binding_constraints(cell_values)?,
+            "commitment_binding_fixed" => {
+                self.evaluate_commitment_binding_constraints(cell_values)?
+            }
             "merkle_path_verification" => self.evaluate_merkle_constraints(cell_values)?,
-            "mathematically_sound_nullifier_system" => self.evaluate_nullifier_constraints(cell_values)?,
-            _ => {}, // Other gates
+            "mathematically_sound_nullifier_system" => {
+                self.evaluate_nullifier_constraints(cell_values)?
+            }
+            _ => {} // Other gates
         }
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Evaluate your enterprise_auth_fixed gate constraints
     fn evaluate_enterprise_auth_constraints(&mut self, cell_values: &[(String, Fp)]) -> Result<()> {
         // Extract values for enterprise auth gate
@@ -262,7 +265,7 @@ impl ConstraintVerifier {
         let mut nonce_inv = Fp::zero();
         let mut timestamp_inv = Fp::zero();
         let mut compliance = Fp::zero();
-        
+
         for (name, value) in cell_values {
             match name.as_str() {
                 "username" => username = *value,
@@ -274,10 +277,10 @@ impl ConstraintVerifier {
                 "nonce_inv" => nonce_inv = *value,
                 "timestamp_inv" => timestamp_inv = *value,
                 "compliance" => compliance = *value,
-                _ => {},
+                _ => {}
             }
         }
-        
+
         // REAL CONSTRAINT EVALUATION: Check your actual enterprise auth constraints
         let constraints = [
             ("username_nonzero", username * username_inv - Fp::one()),
@@ -286,11 +289,11 @@ impl ConstraintVerifier {
             ("timestamp_nonzero", timestamp * timestamp_inv - Fp::one()),
             ("compliance_valid", compliance - Fp::one()),
         ];
-        
+
         for (constraint_name, result) in &constraints {
             self.constraint_count += 1;
             let is_satisfied = *result == Fp::zero();
-            
+
             if is_satisfied {
                 self.satisfied_count += 1;
             } else {
@@ -305,7 +308,7 @@ impl ConstraintVerifier {
                 };
                 self.real_time_violations.push(violation);
             }
-            
+
             let evaluation = ConstraintEvaluation {
                 gate_name: "enterprise_auth_fixed".to_string(),
                 constraint_index: self.constraint_evaluations.len(),
@@ -313,40 +316,43 @@ impl ConstraintVerifier {
                 evaluation_result: *result,
                 is_satisfied,
             };
-            
+
             self.constraint_evaluations.push(evaluation);
         }
-        
+
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Evaluate your commitment_binding_fixed gate constraints
-    fn evaluate_commitment_binding_constraints(&mut self, cell_values: &[(String, Fp)]) -> Result<()> {
+    fn evaluate_commitment_binding_constraints(
+        &mut self,
+        cell_values: &[(String, Fp)],
+    ) -> Result<()> {
         let mut commitment = Fp::zero();
         let mut auth_token = Fp::zero();
         let mut commit_inv = Fp::zero();
         let mut token_inv = Fp::zero();
-        
+
         for (name, value) in cell_values {
             match name.as_str() {
                 "commitment_check" => commitment = *value,
                 "auth_token_check" => auth_token = *value,
                 "commit_inv" => commit_inv = *value,
                 "token_inv" => token_inv = *value,
-                _ => {},
+                _ => {}
             }
         }
-        
+
         // REAL CONSTRAINT EVALUATION: Check your actual commitment binding constraints
         let constraints = [
             ("commitment_nonzero", commitment * commit_inv - Fp::one()),
             ("auth_token_nonzero", auth_token * token_inv - Fp::one()),
         ];
-        
+
         for (constraint_name, result) in &constraints {
             self.constraint_count += 1;
             let is_satisfied = *result == Fp::zero();
-            
+
             if is_satisfied {
                 self.satisfied_count += 1;
             } else {
@@ -360,7 +366,7 @@ impl ConstraintVerifier {
                 };
                 self.real_time_violations.push(violation);
             }
-            
+
             let evaluation = ConstraintEvaluation {
                 gate_name: "commitment_binding_fixed".to_string(),
                 constraint_index: self.constraint_evaluations.len(),
@@ -368,13 +374,13 @@ impl ConstraintVerifier {
                 evaluation_result: *result,
                 is_satisfied,
             };
-            
+
             self.constraint_evaluations.push(evaluation);
         }
-        
+
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Evaluate your merkle_path_verification gate constraints
     fn evaluate_merkle_constraints(&mut self, cell_values: &[(String, Fp)]) -> Result<()> {
         // Extract Merkle verification values
@@ -384,7 +390,7 @@ impl ConstraintVerifier {
         let mut index_bit = Fp::zero();
         let mut left_input = Fp::zero();
         let mut right_input = Fp::zero();
-        
+
         for (name, value) in cell_values {
             match name.as_str() {
                 "current_hash" => current_hash = *value,
@@ -393,21 +399,27 @@ impl ConstraintVerifier {
                 "index_bit" => index_bit = *value,
                 "conditional_left" => left_input = *value,
                 "conditional_right" => right_input = *value,
-                _ => {},
+                _ => {}
             }
         }
-        
+
         // REAL CONSTRAINT EVALUATION: Check your actual Merkle constraints
         let constraints = [
             ("index_bit_boolean", index_bit * (index_bit - Fp::one())),
-            ("left_conditional", left_input - ((Fp::one() - index_bit) * current_hash + index_bit * sibling_hash)),
-            ("right_conditional", right_input - (index_bit * current_hash + (Fp::one() - index_bit) * sibling_hash)),
+            (
+                "left_conditional",
+                left_input - ((Fp::one() - index_bit) * current_hash + index_bit * sibling_hash),
+            ),
+            (
+                "right_conditional",
+                right_input - (index_bit * current_hash + (Fp::one() - index_bit) * sibling_hash),
+            ),
         ];
-        
+
         for (constraint_name, result) in &constraints {
             self.constraint_count += 1;
             let is_satisfied = *result == Fp::zero();
-            
+
             if is_satisfied {
                 self.satisfied_count += 1;
             } else {
@@ -421,7 +433,7 @@ impl ConstraintVerifier {
                 };
                 self.real_time_violations.push(violation);
             }
-            
+
             let evaluation = ConstraintEvaluation {
                 gate_name: "merkle_path_verification".to_string(),
                 constraint_index: self.constraint_evaluations.len(),
@@ -429,32 +441,32 @@ impl ConstraintVerifier {
                 evaluation_result: *result,
                 is_satisfied,
             };
-            
+
             self.constraint_evaluations.push(evaluation);
         }
-        
+
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Evaluate your nullifier system constraints
     fn evaluate_nullifier_constraints(&mut self, cell_values: &[(String, Fp)]) -> Result<()> {
         let mut nullifier = Fp::zero();
         let mut nullifier_inv = Fp::zero();
-        
+
         for (name, value) in cell_values {
             match name.as_str() {
                 "nullifier_check" => nullifier = *value,
                 "nullifier_inv" => nullifier_inv = *value,
-                _ => {},
+                _ => {}
             }
         }
-        
+
         // REAL CONSTRAINT EVALUATION: Check your actual nullifier constraints
         let constraint_result = nullifier * nullifier_inv - Fp::one();
-        
+
         self.constraint_count += 1;
         let is_satisfied = constraint_result == Fp::zero();
-        
+
         if is_satisfied {
             self.satisfied_count += 1;
         } else {
@@ -468,7 +480,7 @@ impl ConstraintVerifier {
             };
             self.real_time_violations.push(violation);
         }
-        
+
         let evaluation = ConstraintEvaluation {
             gate_name: "mathematically_sound_nullifier_system".to_string(),
             constraint_index: self.constraint_evaluations.len(),
@@ -476,17 +488,17 @@ impl ConstraintVerifier {
             evaluation_result: constraint_result,
             is_satisfied,
         };
-        
+
         self.constraint_evaluations.push(evaluation);
-        
+
         Ok(())
     }
-    
+
     /// REAL INTEGRATION: Get real-time constraint violations
     pub fn get_real_time_violations(&self) -> &[ConstraintViolation] {
         &self.real_time_violations
     }
-    
+
     /// REAL INTEGRATION: Reset for new circuit execution
     pub fn reset(&mut self) {
         self.constraint_count = 0;
@@ -560,11 +572,18 @@ pub fn get_constraint_verification_result() -> Result<ConstraintVerificationResu
             total_constraints: interceptor.constraint_count,
             satisfied_constraints: interceptor.satisfied_count,
             satisfaction_rate: interceptor.get_satisfaction_rate(),
-            unsatisfied_constraints: interceptor.get_unsatisfied_constraints()
-                .iter().map(|eval| format!("{}: {}", eval.gate_name, eval.constraint_index))
+            unsatisfied_constraints: interceptor
+                .get_unsatisfied_constraints()
+                .iter()
+                .map(|eval| format!("{}: {}", eval.gate_name, eval.constraint_index))
                 .collect(),
             constraint_degrees: interceptor.get_constraint_degrees(),
-            max_degree: interceptor.get_constraint_degrees().values().max().copied().unwrap_or(0),
+            max_degree: interceptor
+                .get_constraint_degrees()
+                .values()
+                .max()
+                .copied()
+                .unwrap_or(0),
         })
     } else {
         Err(anyhow::anyhow!("Failed to access constraint interceptor"))

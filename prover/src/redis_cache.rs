@@ -1,10 +1,10 @@
 // Redis caching layer for 100x performance boost
-use anyhow::{Result, Context};
-use pasta_curves::Fp;
+use anyhow::{Context, Result};
 use ff::PrimeField;
+use pasta_curves::Fp;
 
 #[cfg(feature = "redis")]
-use redis::{Commands, Client};
+use redis::{Client, Commands};
 
 pub struct RedisCache {
     #[cfg(feature = "redis")]
@@ -15,15 +15,17 @@ impl RedisCache {
     pub fn new() -> Result<Self> {
         #[cfg(feature = "redis")]
         {
-            let redis_url = std::env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-            
+            let redis_url =
+                std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
             println!("🔌 Attempting to connect to Redis at {}...", redis_url);
 
             let client = Client::open(redis_url)
                 .context("Failed to create Redis client. Is Redis running and the URL correct?")?;
-            
-            client.get_connection().context("Failed to connect to Redis server.")?;
+
+            client
+                .get_connection()
+                .context("Failed to connect to Redis server.")?;
 
             println!("✅ Successfully connected to Redis.");
             Ok(Self { client })
@@ -31,7 +33,7 @@ impl RedisCache {
         #[cfg(not(feature = "redis"))]
         Ok(Self {})
     }
-    
+
     // Merkle root caching
     pub fn get_merkle_root(&self) -> Result<Option<Fp>> {
         #[cfg(feature = "redis")]
@@ -47,7 +49,7 @@ impl RedisCache {
         }
         Ok(None)
     }
-    
+
     pub fn set_merkle_root(&self, root: Fp) -> Result<()> {
         #[cfg(feature = "redis")]
         {
@@ -58,7 +60,7 @@ impl RedisCache {
         }
         Ok(())
     }
-    
+
     // Nullifier check
     pub fn nullifier_exists(&self, nullifier: &[u8; 32]) -> Result<bool> {
         #[cfg(feature = "redis")]
@@ -70,7 +72,7 @@ impl RedisCache {
         #[cfg(not(feature = "redis"))]
         Ok(false)
     }
-    
+
     pub fn store_nullifier(&self, nullifier: &[u8; 32]) -> Result<()> {
         #[cfg(feature = "redis")]
         {

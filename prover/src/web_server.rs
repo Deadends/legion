@@ -1,9 +1,7 @@
+use crate::application_service::ApplicationService;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{
-    application_service::ApplicationService,
-};
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -14,7 +12,7 @@ pub struct RegisterRequest {
 // BLIND REGISTRATION: Client sends only leaf hash
 #[derive(Deserialize)]
 pub struct BlindRegisterRequest {
-    pub user_leaf: String,  // Hex-encoded Fp element
+    pub user_leaf: String, // Hex-encoded Fp element
 }
 
 // REMOVED: LoginRequest - use AnonymousProofRequest for zero-knowledge auth
@@ -32,7 +30,7 @@ pub struct AnonymousProofRequest {
 pub struct AnonymitySetResponse {
     pub merkle_root: String,
     pub leaves: Vec<String>,
-    pub paths: Vec<Vec<String>>,  // Pre-computed Merkle paths
+    pub paths: Vec<Vec<String>>, // Pre-computed Merkle paths
     pub tree_size: usize,
 }
 
@@ -51,22 +49,18 @@ pub struct WebServer {
 impl WebServer {
     pub fn new() -> Result<Self> {
         let app_service = Arc::new(ApplicationService::new()?);
-        
-        Ok(Self {
-            app_service,
-        })
+
+        Ok(Self { app_service })
     }
 
-
-    
     /// BLIND REGISTRATION: Server receives only leaf hash (never sees raw credentials)
     pub fn handle_blind_register(&self, req: BlindRegisterRequest) -> Result<AuthResponse> {
-        use pasta_curves::Fp;
         use ff::PrimeField;
-        
+        use pasta_curves::Fp;
+
         // Decode leaf hash from hex
-        let leaf_bytes = hex::decode(&req.user_leaf)
-            .map_err(|_| anyhow::anyhow!("Invalid leaf hex"))?;
+        let leaf_bytes =
+            hex::decode(&req.user_leaf).map_err(|_| anyhow::anyhow!("Invalid leaf hex"))?;
         if leaf_bytes.len() != 32 {
             return Ok(AuthResponse {
                 success: false,
@@ -75,19 +69,22 @@ impl WebServer {
                 proof_size: None,
             });
         }
-        
+
         let mut leaf_repr = [0u8; 32];
         leaf_repr.copy_from_slice(&leaf_bytes);
-        let user_leaf = Fp::from_repr(leaf_repr).into_option()
+        let user_leaf = Fp::from_repr(leaf_repr)
+            .into_option()
             .ok_or_else(|| anyhow::anyhow!("Invalid leaf field element"))?;
-        
+
         // Register with pre-computed leaf (server never sees username/password)
         let protocol = self.app_service.get_protocol();
         match protocol.register_user_with_leaf(user_leaf) {
             Ok(_) => Ok(AuthResponse {
                 success: true,
                 session_id: None,
-                message: Some("Blind registration successful - server never saw credentials".to_string()),
+                message: Some(
+                    "Blind registration successful - server never saw credentials".to_string(),
+                ),
                 proof_size: None,
             }),
             Err(e) => Ok(AuthResponse {
@@ -101,12 +98,12 @@ impl WebServer {
 
     // REMOVED: Server-side proving endpoint
     // Use verify_anonymous_proof() for true zero-knowledge authentication
-    
+
     /// Get anonymity set for client-side proving
     pub fn get_anonymity_set(&self) -> Result<AnonymitySetResponse> {
         let protocol = self.app_service.get_protocol();
         let dto = protocol.get_anonymity_set_dto()?;
-        
+
         Ok(AnonymitySetResponse {
             merkle_root: dto.merkle_root,
             leaves: dto.leaves,
@@ -114,7 +111,7 @@ impl WebServer {
             tree_size: dto.tree_size,
         })
     }
-    
+
     /// Serve static proving files (params and proving keys)
     pub fn serve_static_file(&self, filename: &str) -> Result<Vec<u8>> {
         let allowed_files = ["k16.params", "auth_circuit.pk"];
@@ -133,8 +130,15 @@ impl WebServer {
     }
 
     #[cfg(feature = "webauthn")]
-    pub fn handle_webauthn_register_finish(&self, user_id: String, reg: webauthn_rs::prelude::RegisterPublicKeyCredential) -> Result<AuthResponse> {
-        match self.app_service.webauthn_finish_registration(&user_id, &reg) {
+    pub fn handle_webauthn_register_finish(
+        &self,
+        user_id: String,
+        reg: webauthn_rs::prelude::RegisterPublicKeyCredential,
+    ) -> Result<AuthResponse> {
+        match self
+            .app_service
+            .webauthn_finish_registration(&user_id, &reg)
+        {
             Ok(credential_id) => Ok(AuthResponse {
                 success: true,
                 session_id: Some(credential_id),
@@ -157,8 +161,15 @@ impl WebServer {
     }
 
     #[cfg(feature = "webauthn")]
-    pub fn handle_webauthn_auth_finish(&self, user_id: String, auth: webauthn_rs::prelude::PublicKeyCredential) -> Result<AuthResponse> {
-        match self.app_service.webauthn_finish_authentication(&user_id, &auth) {
+    pub fn handle_webauthn_auth_finish(
+        &self,
+        user_id: String,
+        auth: webauthn_rs::prelude::PublicKeyCredential,
+    ) -> Result<AuthResponse> {
+        match self
+            .app_service
+            .webauthn_finish_authentication(&user_id, &auth)
+        {
             Ok(verified_user) => Ok(AuthResponse {
                 success: true,
                 session_id: None,
@@ -176,11 +187,11 @@ impl WebServer {
 
     // ZCASH MODEL: Verify anonymous proof (server knows nothing about user identity)
     pub fn verify_anonymous_proof(&self, req: AnonymousProofRequest) -> Result<AuthResponse> {
-        use pasta_curves::Fp;
         use ff::PrimeField;
-        
+        use pasta_curves::Fp;
+
         let protocol = self.app_service.get_protocol();
-        
+
         // Decode merkle root
         let root_bytes = hex::decode(&req.merkle_root)
             .map_err(|_| anyhow::anyhow!("Invalid merkle root hex"))?;
@@ -194,12 +205,13 @@ impl WebServer {
         }
         let mut root_repr = [0u8; 32];
         root_repr.copy_from_slice(&root_bytes);
-        let merkle_root = Fp::from_repr(root_repr).into_option()
+        let merkle_root = Fp::from_repr(root_repr)
+            .into_option()
             .ok_or_else(|| anyhow::anyhow!("Invalid merkle root field element"))?;
-        
+
         // Decode nullifier
-        let nullifier_bytes = hex::decode(&req.nullifier)
-            .map_err(|_| anyhow::anyhow!("Invalid nullifier hex"))?;
+        let nullifier_bytes =
+            hex::decode(&req.nullifier).map_err(|_| anyhow::anyhow!("Invalid nullifier hex"))?;
         if nullifier_bytes.len() != 32 {
             return Ok(AuthResponse {
                 success: false,
@@ -210,9 +222,10 @@ impl WebServer {
         }
         let mut nullifier_repr = [0u8; 32];
         nullifier_repr.copy_from_slice(&nullifier_bytes);
-        let nullifier = Fp::from_repr(nullifier_repr).into_option()
+        let nullifier = Fp::from_repr(nullifier_repr)
+            .into_option()
             .ok_or_else(|| anyhow::anyhow!("Invalid nullifier field element"))?;
-        
+
         // Verify proof blindly (server doesn't know which user)
         let public_inputs = vec![merkle_root, nullifier];
         let auth_context = crate::AuthContext {
@@ -221,19 +234,19 @@ impl WebServer {
             auth_level: 1,
             timestamp: crate::get_timestamp(),
         };
-        
+
         match protocol.verify_proof(&req.proof, &public_inputs, &auth_context) {
             Ok(true) => {
                 let nullifier_hash = *blake3::hash(&nullifier_repr).as_bytes();
                 let session_token = nullifier_hash;
-                
+
                 Ok(AuthResponse {
                     success: true,
                     session_id: Some(hex::encode(session_token)),
                     message: Some("Anonymous authentication successful".to_string()),
                     proof_size: Some(req.proof.len()),
                 })
-            },
+            }
             Ok(false) => Ok(AuthResponse {
                 success: false,
                 session_id: None,

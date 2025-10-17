@@ -1,13 +1,15 @@
 // Real Halo2 proof generation
-use anyhow::{Result, anyhow};
+use crate::auth_circuit::AuthCircuit;
+use anyhow::{anyhow, Result};
 use halo2_proofs::{
-    plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, VerifyingKey, ProvingKey, SingleVerifier},
+    plonk::{
+        create_proof, keygen_pk, keygen_vk, verify_proof, ProvingKey, SingleVerifier, VerifyingKey,
+    },
     poly::commitment::Params,
-    transcript::{Blake2bWrite, Challenge255, Blake2bRead},
+    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
 use pasta_curves::{vesta, Fp};
 use rand::rngs::OsRng;
-use crate::auth_circuit::AuthCircuit;
 use std::io::Cursor;
 
 pub struct ProofGenerator {
@@ -23,10 +25,10 @@ impl ProofGenerator {
         println!("✅ ProofGenerator initialized in VERIFIER-ONLY mode");
         println!("   → Server will NOT generate proofs (zero-knowledge!)");
         println!("   → Keys will be generated on-demand for verification");
-        
+
         // Dummy params - will be replaced when verifying
         let params = Params::<vesta::Affine>::new(14);
-        
+
         Self {
             params,
             vk: None,
@@ -34,30 +36,35 @@ impl ProofGenerator {
             k: 14,
         }
     }
-    
+
     /// Client-side: Full mode with key generation
     pub fn new(k: u32) -> Result<Self> {
         println!("⏳ [1/4] Initializing ProofGenerator with k={}...", k);
         let params = Self::load_or_generate_params(k)?;
         println!("✅ [1/4] Params ready");
-        
+
         println!("⏳ [2/4] Creating dummy circuit for key generation...");
         let dummy_circuit = AuthCircuit::default();
         println!("✅ [2/4] Dummy circuit created");
-        
+
         println!("⏳ [3/4] Generating verifying key (VK)...");
         let vk = keygen_vk(&params, &dummy_circuit)
             .map_err(|e| anyhow!("VK generation failed: {}", e))?;
         println!("✅ [3/4] VK generated");
-        
+
         println!("⏳ [4/4] Generating proving key (PK)...");
         let pk = keygen_pk(&params, vk.clone(), &dummy_circuit)
             .map_err(|e| anyhow!("PK generation failed: {}", e))?;
         println!("✅ [4/4] PK generated");
-        
+
         println!("✅ ✅ ✅ Total initialization complete");
-        
-        Ok(Self { params, vk: Some(vk), pk: Some(pk), k })
+
+        Ok(Self {
+            params,
+            vk: Some(vk),
+            pk: Some(pk),
+            k,
+        })
     }
 
     /// WASM-optimized: Create from params bytes, generate keys
@@ -70,11 +77,14 @@ impl ProofGenerator {
                 #[wasm_bindgen(js_namespace = console)]
                 fn log(s: &str);
             }
-            log(&format!("⏳ Loading params from bytes ({} bytes)...", params_bytes.len()));
+            log(&format!(
+                "⏳ Loading params from bytes ({} bytes)...",
+                params_bytes.len()
+            ));
         }
-        
+
         let params = Params::read(&mut Cursor::new(params_bytes))?;
-        
+
         #[cfg(target_arch = "wasm32")]
         {
             use wasm_bindgen::prelude::*;
@@ -86,11 +96,11 @@ impl ProofGenerator {
             log("✅ Params loaded");
             log("⏳ Generating verifying key (VK) - this takes ~10-15s...");
         }
-        
+
         let dummy_circuit = AuthCircuit::default();
         let vk = keygen_vk(&params, &dummy_circuit)
             .map_err(|e| anyhow!("VK generation failed: {}", e))?;
-        
+
         #[cfg(target_arch = "wasm32")]
         {
             use wasm_bindgen::prelude::*;
@@ -102,10 +112,10 @@ impl ProofGenerator {
             log("✅ VK generated");
             log("⏳ Generating proving key (PK) - this takes ~10-15s...");
         }
-        
+
         let pk = keygen_pk(&params, vk.clone(), &dummy_circuit)
             .map_err(|e| anyhow!("PK generation failed: {}", e))?;
-        
+
         #[cfg(target_arch = "wasm32")]
         {
             use wasm_bindgen::prelude::*;
@@ -116,8 +126,13 @@ impl ProofGenerator {
             }
             log("✅ PK generated");
         }
-        
-        Ok(Self { params, vk: Some(vk), pk: Some(pk), k })
+
+        Ok(Self {
+            params,
+            vk: Some(vk),
+            pk: Some(pk),
+            k,
+        })
     }
 
     #[cfg(feature = "redis")]
@@ -126,7 +141,7 @@ impl ProofGenerator {
         let client = redis::Client::open("redis://127.0.0.1:6379/")?;
         let mut conn = client.get_connection()?;
         let key = format!("legion:params:k{}", k);
-        
+
         if let Ok(bytes) = conn.get::<_, Vec<u8>>(&key) {
             if !bytes.is_empty() {
                 println!("✅ Loading params from Redis ({} bytes)", bytes.len());
@@ -139,7 +154,7 @@ impl ProofGenerator {
                 }
             }
         }
-        
+
         println!("⏳ Generating params (30s, caching to Redis)...");
         let params = Params::new(k);
         let mut buf = Vec::new();
@@ -157,17 +172,17 @@ impl ProofGenerator {
             println!("⏳ Generating params in-memory for WASM (k={})...", k);
             Ok(Params::new(k))
         }
-        
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             use std::fs::{self, File};
             let path = format!("./params/k{}.params", k);
-            
+
             if let Ok(mut file) = File::open(&path) {
                 println!("✅ Loading params from {}", path);
                 return Ok(Params::read(&mut file)?);
             }
-            
+
             println!("⏳ Generating params (30s, caching locally)...");
             let params = Params::new(k);
             fs::create_dir_all("./params")?;
@@ -177,7 +192,7 @@ impl ProofGenerator {
             Ok(params)
         }
     }
-    
+
     pub fn setup(&mut self, _circuit: &AuthCircuit) -> Result<()> {
         // Keys already generated at startup
         if self.pk.is_some() && self.vk.is_some() {
@@ -186,23 +201,26 @@ impl ProofGenerator {
         }
         Err(anyhow!("Keys not initialized - this should not happen"))
     }
-    
+
     pub fn generate_proof(&self, circuit: AuthCircuit, public_inputs: &[Fp]) -> Result<Vec<u8>> {
         println!("🔍 DEBUG: generate_proof() called");
         println!("🔍 DEBUG: pk.is_some() = {}", self.pk.is_some());
-        
-        let pk = self.pk.as_ref().ok_or_else(|| anyhow!("Proving key not initialized"))?;
-        
+
+        let pk = self
+            .pk
+            .as_ref()
+            .ok_or_else(|| anyhow!("Proving key not initialized"))?;
+
         println!("🔍 DEBUG: Starting create_proof...");
         println!("💾 Allocating proof buffer on heap...");
-        
+
         #[cfg(not(target_arch = "wasm32"))]
         let start = std::time::Instant::now();
-        
+
         // Box circuit to force heap allocation
         let boxed_circuit = Box::new(circuit);
         let mut transcript = Blake2bWrite::<_, vesta::Affine, Challenge255<_>>::init(vec![]);
-        
+
         create_proof(
             &self.params,
             pk,
@@ -211,18 +229,22 @@ impl ProofGenerator {
             OsRng,
             &mut transcript,
         )?;
-        
+
         let proof = transcript.finalize();
-        
+
         #[cfg(not(target_arch = "wasm32"))]
-        println!("✅ Proof generated in {:?}, size: {} bytes", start.elapsed(), proof.len());
-        
+        println!(
+            "✅ Proof generated in {:?}, size: {} bytes",
+            start.elapsed(),
+            proof.len()
+        );
+
         #[cfg(target_arch = "wasm32")]
         println!("✅ Proof generated, size: {} bytes", proof.len());
-        
+
         Ok(proof)
     }
-    
+
     pub fn verify_proof(&self, proof: &[u8], public_inputs: &[Fp]) -> Result<bool> {
         // Generate VK on-demand if not present (verifier-only mode)
         let vk = if let Some(vk) = &self.vk {
@@ -233,10 +255,10 @@ impl ProofGenerator {
             keygen_vk(&self.params, &dummy_circuit)
                 .map_err(|e| anyhow!("VK generation failed: {}", e))?
         };
-        
+
         let strategy = SingleVerifier::new(&self.params);
         let mut transcript = Blake2bRead::<_, vesta::Affine, Challenge255<_>>::init(proof);
-        
+
         match verify_proof(
             &self.params,
             &vk,
@@ -248,7 +270,7 @@ impl ProofGenerator {
             Err(_) => Ok(false),
         }
     }
-    
+
     /// Serialize params to bytes for caching
     pub fn get_params_bytes(&self) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
