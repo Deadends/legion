@@ -20,6 +20,12 @@ fn main() -> Result<()> {
         Fp::zero(),
         Fp::zero(),
         Fp::zero(),
+        Fp::zero(),
+        Fp::zero(),
+        [Fp::zero(); 10],
+        0,
+        Fp::zero(),
+        Fp::zero(),
     )?;
     
     // Generate proving keys

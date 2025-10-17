@@ -1,5 +1,5 @@
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-args=/STACK:16777216"]
+[build]
+rustflags = ["-A", "unexpected_cfgs", "-A", "unused_imports", "-A", "unused_variables", "-A", "dead_code", "-A", "deprecated"]
 
-[target.x86_64-pc-windows-gnu]
-rustflags = ["-C", "link-args=-Wl,--stack,16777216"]
+[target.'cfg(all())']
+rustflags = ["-A", "clippy::too_many_arguments", "-A", "clippy::type_complexity", "-A", "clippy::needless_range_loop"]
