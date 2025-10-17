@@ -223,9 +223,8 @@ By contributing, you agree that your contributions will be licensed under the MI
 ## 💬 Communication
 
 - **Issues**: Bug reports and feature requests
-- **Discussions**: Questions and ideas
 - **Pull Requests**: Code contributions
-- **Email**: dev@yourdomain.com
+- **Email**: nantha.ponmudi@gmail.com
 
 ## 🙏 Recognition
 
@@ -238,7 +237,6 @@ Contributors are recognized in:
 
 - Read the [README.md](./README.md)
 - Check [existing issues](https://github.com/deadends/legion/issues)
-- Ask in [discussions](https://github.com/deadends/legion/discussions)
 - Email: nantha.ponmudi@gmail.com
 
 ---
