@@ -83,6 +83,11 @@ fn main() -> Result<()> {
     let merkle_path = [pasta_curves::Fp::from(1u64); 20];
     let merkle_root = pasta_curves::Fp::from(42u64);
     
+    let device_commitment = pasta_curves::Fp::from(789u64);
+    let device_merkle_path = [pasta_curves::Fp::from(2u64); 10];
+    let device_merkle_root = pasta_curves::Fp::from(888u64);
+    let linkability_tag = pasta_curves::Fp::from(555u64);
+    
     let circuit = AuthCircuit::new(
         username_hash,
         password_hash,
@@ -92,6 +97,12 @@ fn main() -> Result<()> {
         merkle_root,
         pasta_curves::Fp::from(123u64),  // challenge
         pasta_curves::Fp::from(456u64),  // client_pubkey
+        pasta_curves::Fp::from(1234567890u64),  // timestamp
+        device_commitment,
+        device_merkle_path,
+        3,  // device_position
+        device_merkle_root,
+        linkability_tag,
     )?;
     
     let public_inputs = circuit.public_inputs();
