@@ -750,6 +750,7 @@ mod tests {
         let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
         let device_position = 3u64;
         let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -765,6 +766,7 @@ mod tests {
             device_merkle_path,
             device_position,
             device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
@@ -791,6 +793,7 @@ mod tests {
         let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
         let device_position = 3u64;
         let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -806,6 +809,7 @@ mod tests {
             device_merkle_path,
             device_position,
             device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
