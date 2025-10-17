@@ -3,6 +3,9 @@ name = "legion-prover"
 version = "0.1.0"
 edition = "2021"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("post-quantum", "nova", "webauthn", "http-server", "rocksdb-storage", "hsm", "cloud-aws", "cloud-azure", "enterprise", "wasm"))'] }
+
 [dependencies]
 # Core ZK dependencies (stable 0.3, single-threaded WASM)
 halo2_proofs = { version = "0.3", default-features = false }
