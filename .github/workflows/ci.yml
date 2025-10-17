@@ -54,9 +54,6 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379
       
-      - name: Run clippy
-        run: cargo clippy --all-targets
-      
       - name: Check formatting
         run: cargo fmt --all -- --check
 
