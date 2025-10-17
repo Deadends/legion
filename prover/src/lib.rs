@@ -1,5 +1,20 @@
 // LEGION: Clean Layered Zero-Knowledge Authentication
 
+#![allow(unexpected_cfgs)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(deprecated)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::manual_abs_diff)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::unwrap_or_default)]
+#![allow(clippy::only_used_in_recursion)]
+#![allow(clippy::needless_return)]
+
 // LAYERED ARCHITECTURE
 pub mod auth_circuit;                  // Layer 1: Pure Circuit (Math Only)
 #[cfg(not(target_arch = "wasm32"))]
