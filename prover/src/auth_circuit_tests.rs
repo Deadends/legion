@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth_circuit::{AuthCircuit, DEVICE_TREE_DEPTH, MERKLE_DEPTH};
     use halo2_proofs::{dev::MockProver, pasta::Fp};
     use ff::Field;
 
@@ -17,6 +18,11 @@ mod tests {
         let merkle_path = [Fp::from(1u64); MERKLE_DEPTH];
         let merkle_root = Fp::from(999u64);
         let leaf_index = 5u64;
+        let device_commitment = Fp::from(789u64);
+        let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
+        let device_position = 3u64;
+        let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -25,6 +31,14 @@ mod tests {
             merkle_path,
             leaf_index,
             merkle_root,
+            Fp::from(123u64),
+            Fp::from(456u64),
+            Fp::from(1234567890u64),
+            device_commitment,
+            device_merkle_path,
+            device_position,
+            device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
@@ -46,6 +60,11 @@ mod tests {
         let merkle_path = [Fp::from(1u64); MERKLE_DEPTH];
         let merkle_root = Fp::from(999u64);
         let leaf_index = 5u64;
+        let device_commitment = Fp::from(789u64);
+        let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
+        let device_position = 3u64;
+        let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -54,6 +73,14 @@ mod tests {
             merkle_path,
             leaf_index,
             merkle_root,
+            Fp::from(123u64),
+            Fp::from(456u64),
+            Fp::from(1234567890u64),
+            device_commitment,
+            device_merkle_path,
+            device_position,
+            device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
@@ -77,6 +104,11 @@ mod tests {
         
         let merkle_root = Fp::from(999u64);
         let leaf_index = 5u64;
+        let device_commitment = Fp::from(789u64);
+        let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
+        let device_position = 3u64;
+        let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -85,6 +117,14 @@ mod tests {
             merkle_path,
             leaf_index,
             merkle_root,
+            Fp::from(123u64),
+            Fp::from(456u64),
+            Fp::from(1234567890u64),
+            device_commitment,
+            device_merkle_path,
+            device_position,
+            device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
@@ -111,6 +151,11 @@ mod tests {
         // This would need to be tested by manually constructing a circuit
         // with invalid path bits, which the boolean constraint should reject
         let leaf_index = 5u64;
+        let device_commitment = Fp::from(789u64);
+        let device_merkle_path = [Fp::from(2u64); DEVICE_TREE_DEPTH];
+        let device_position = 3u64;
+        let device_merkle_root = Fp::from(888u64);
+        let linkability_tag = Fp::from(555u64);
         
         let circuit = AuthCircuit::new(
             username_hash,
@@ -119,6 +164,14 @@ mod tests {
             merkle_path,
             leaf_index,
             merkle_root,
+            Fp::from(123u64),
+            Fp::from(456u64),
+            Fp::from(1234567890u64),
+            device_commitment,
+            device_merkle_path,
+            device_position,
+            device_merkle_root,
+            linkability_tag,
         ).unwrap();
         
         let public_inputs = circuit.public_inputs();
