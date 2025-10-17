@@ -4,7 +4,7 @@ use halo2_gadgets::poseidon::{primitives as poseidon};
 use anyhow::Result;
 use hex;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "rocksdb-storage")]
 use crate::rocksdb_merkle::RocksDBMerkleTree;
 
 const WIDTH: usize = 3;
@@ -12,72 +12,72 @@ const RATE: usize = 2;
 const MERKLE_DEPTH: usize = 20;
 
 /// Production Merkle tree with RocksDB backend
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "rocksdb-storage")]
 pub struct AnonymityMerkleTree {
     rocksdb_tree: RocksDBMerkleTree,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(feature = "rocksdb-storage"))]
 pub struct AnonymityMerkleTree {}
 
 impl AnonymityMerkleTree {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn new_with_rocksdb(db_path: &str) -> Result<Self> {
         let rocksdb_tree = RocksDBMerkleTree::new(db_path)?;
         Ok(Self { rocksdb_tree })
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn new_with_rocksdb(_db_path: &str) -> Result<Self> {
         Ok(Self {})
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn add_leaf(&mut self, leaf: Fp) -> Result<usize> {
         self.rocksdb_tree.add_leaf(leaf)
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn add_leaf(&mut self, _leaf: Fp) -> Result<usize> {
         Ok(0)
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn get_proof(&self, index: usize) -> Result<([Fp; MERKLE_DEPTH], Fp)> {
         self.rocksdb_tree.get_proof(index)
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_proof(&self, _index: usize) -> Result<([Fp; MERKLE_DEPTH], Fp)> {
         Ok(([Fp::zero(); MERKLE_DEPTH], Fp::zero()))
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn get_anonymity_set_size(&self) -> usize {
         self.rocksdb_tree.get_anonymity_set_size()
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_anonymity_set_size(&self) -> usize {
         0
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn get_root(&self) -> Fp {
         self.rocksdb_tree.get_root()
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_root(&self) -> Fp {
         Fp::zero()
     }
     
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "rocksdb-storage")]
     pub fn get_leaf_index(&self, leaf: &Fp) -> Option<usize> {
         self.rocksdb_tree.get_leaf_index(leaf)
     }
     
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_leaf_index(&self, _leaf: &Fp) -> Option<usize> {
         None
     }
