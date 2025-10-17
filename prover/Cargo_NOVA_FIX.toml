@@ -1,0 +1,15 @@
+# Add these dependencies to fix Nova
+
+[dependencies]
+# FIXED: Use vetted Nova implementation instead of custom broken code
+nova-snark = "0.32"
+
+# Alternative options (choose one):
+# lurk = "0.3"              # Protocol Labs Nova
+# nexus-nova = "1.0"        # Latest optimizations
+
+# Keep existing dependencies
+halo2_proofs = "0.3"
+pasta_curves = "0.5"
+ff = "0.13"
+# ... rest of your existing deps

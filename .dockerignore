@@ -1,0 +1,13 @@
+target/
+node_modules/
+.git/
+.env
+*.log
+legion_data/
+wasm-client/pkg/
+wasm-client/node_modules/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

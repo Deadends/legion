@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legion | Authenticated Session</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #ffffff;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .header p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 400;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            letter-spacing: 0.2px;
+        }
+        
+        .card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            letter-spacing: 0.2px;
+        }
+        
+        .session-info {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 500;
+        }
+        
+        .info-value {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 400;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .badge-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: rgba(102, 126, 234, 0.15);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+            letter-spacing: 0.3px;
+        }
+        
+        .description {
+            font-size: 14px;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 16px;
+        }
+        
+        .privacy-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .privacy-list li {
+            padding: 10px 0;
+            font-size: 14px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .privacy-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .privacy-list strong {
+            color: rgba(255, 255, 255, 0.95);
+            font-weight: 500;
+        }
+        
+        .verified {
+            color: #2ecc71;
+        }
+        
+        .hidden {
+            color: #e74c3c;
+        }
+        
+        button {
+            width: 100%;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #ffffff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 0.3px;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .loading p {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .error-card {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+        
+        .error-card h2 {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>LEGION</h1>
+            <p>Authenticated Session</p>
+        </div>
+        
+        <div id="loading" class="loading">
+            <p>Verifying session credentials...</p>
+        </div>
+        
+        <div id="content" style="display: none;">
+            <div class="card">
+                <h2>Authentication Successful</h2>
+                <div class="session-info">
+                    <div class="info-row">
+                        <span class="info-label">Session ID</span>
+                        <span class="info-value" id="sessionId"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Authenticated</span>
+                        <span class="info-value" id="authTime"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Session Expires</span>
+                        <span class="info-value" id="expiryTime"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Security Features</h3>
+                <div class="badge-container" id="securityBadges"></div>
+                <p class="description">
+                    Your identity is protected by zero-knowledge cryptographic proofs. 
+                    The server has verified your credentials without learning your username, 
+                    password, or identity. Your session is cryptographically bound to this 
+                    device's hardware security module.
+                </p>
+            </div>
+            
+            <div class="card">
+                <h3>Privacy Guarantees</h3>
+                <ul class="privacy-list">
+                    <li><span class="verified">VERIFIED</span> — Proof cryptographically valid</li>
+                    <li><span class="verified">VERIFIED</span> — Member of anonymity set</li>
+                    <li><span class="verified">VERIFIED</span> — Hardware device binding</li>
+                    <li><span class="hidden">HIDDEN</span> — <strong>Username</strong> (zero-knowledge proof)</li>
+                    <li><span class="hidden">HIDDEN</span> — <strong>Password</strong> (never transmitted)</li>
+                    <li><span class="hidden">HIDDEN</span> — <strong>Identity</strong> (anonymous authentication)</li>
+                </ul>
+            </div>
+            
+            <button onclick="logout()">End Session</button>
+        </div>
+        
+        <div id="error" style="display: none;">
+            <div class="card error-card">
+                <h2>Authentication Failed</h2>
+                <p class="description" id="errorMessage"></p>
+                <button onclick="window.location.href='index.html'">Return to Login</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://127.0.0.1:3001';
+
+        async function verifySession() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const sessionToken = urlParams.get('session');
+                
+                if (!sessionToken) {
+                    showError('No session token provided. Please authenticate first.');
+                    return;
+                }
+
+                // Get linkability_tag (stored during authentication)
+                const linkabilityTag = localStorage.getItem('legion_linkability_tag');
+                if (!linkabilityTag) {
+                    showError('Linkability tag not found. Please authenticate again.');
+                    return;
+                }
+
+                const response = await fetch(`${SERVER_URL}/api/protected/welcome`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        session_id: sessionToken,
+                        client_pubkey: linkabilityTag  // Send linkability_tag
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const welcomeData = {
+                        success: true,
+                        session_id: sessionToken,
+                        authenticated_at: new Date().toISOString(),
+                        expires_in_seconds: 3600,
+                        message: data.data || 'Session valid'
+                    };
+                    showWelcome(welcomeData);
+                } else {
+                    showError(data.error || 'Session verification failed. Please authenticate again.');
+                }
+            } catch (error) {
+                showError(`Verification error: ${error.message}`);
+            }
+        }
+
+        function showWelcome(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+            
+            const sessionId = data.session_id.substring(0, 16) + '...';
+            document.getElementById('sessionId').textContent = sessionId;
+            document.getElementById('authTime').textContent = new Date(data.authenticated_at).toLocaleString();
+            
+            const expiryDate = new Date(Date.now() + data.expires_in_seconds * 1000);
+            document.getElementById('expiryTime').textContent = expiryDate.toLocaleString();
+            
+            const badges = document.getElementById('securityBadges');
+            const webauthnEnabled = localStorage.getItem('webauthn_registered') === 'true';
+            
+            badges.innerHTML = `
+                <span class="badge">Zero-Knowledge Proof</span>
+                <span class="badge">Merkle Tree Anonymity</span>
+                <span class="badge">Nullifier Protection</span>
+                ${webauthnEnabled ? '<span class="badge">Hardware Binding</span>' : ''}
+                <span class="badge">Expires ${Math.floor(data.expires_in_seconds / 60)} minutes</span>
+            `;
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        function logout() {
+            localStorage.removeItem('legion_session');
+            localStorage.removeItem('legion_device_commitment');
+            localStorage.removeItem('webauthn_registered');
+            window.location.href = 'index.html';
+        }
+
+        verifySession();
+    </script>
+</body>
+</html>

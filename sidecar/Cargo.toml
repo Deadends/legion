@@ -1,0 +1,117 @@
+[package]
+name = "legion-sidecar"
+version = "0.1.0"
+edition = "2021"
+default-run = "legion-sidecar"
+resolver = "2"
+
+[dependencies]
+tokio = { version = "1.47", features = ["full"] }
+tokio-rustls = "0.26"
+rustls = "0.23"
+rustls-pemfile = "2.2"
+rustls-webpki = "0.103"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_cbor = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+thiserror = "1.0.69"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+dashmap = "5.5"
+blake3 = "1.3.3"
+hmac = "0.12.1"
+sha2 = "0.10.6"
+chacha20poly1305 = "0.10.1"
+rand = "0.8.5"
+zeroize = "1.6.0"
+parking_lot = "0.12.1"
+crossbeam-channel = "0.5.8"
+rayon = "1.8.0"
+config = "0.13.4"
+clap = { version = "4.4.18", features = ["derive"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+hyper = { version = "1.7", features = ["full", "server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["full"] }
+axum = { version = "0.8", features = ["json", "tracing"] }
+
+hex = "0.4"
+toml = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+ed25519-dalek = "2.0"
+bls12_381 = "0.8"
+prometheus = "0.13"
+notify = "4.0"
+tempfile = "3.8"
+bloomfilter = "1.0"
+lru = "0.12"
+halo2_proofs = "0.3"
+halo2curves = "0.6"
+blake2 = "0.10"
+rcgen = "0.11"
+
+pasta_curves = "0.5"
+subtle = "2.5"
+base64 = "0.21.7"
+reqwest = { version = "0.11", features = ["json"] }
+deadpool-redis = "0.18"
+redis = { version = "0.27", features = ["tokio-comp"] }
+lazy_static = "1.4"
+pasetors = "0.7"
+pkcs11 = { version = "0.5", optional = true }
+# argon2 version specified in dependencies section below
+ring = "0.17"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3.8"
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio-test = "0.4"
+
+# Force compatible versions
+[dependencies.argon2]
+version = "=0.5.2"  # Last version before edition2024 requirement
+
+[features]
+default = []
+
+security = ["pkcs11"]
+
+
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
+
+[[example]]
+name = "stage_a_client"
+path = "examples/stage_a_client.rs"
+
+[[example]]
+name = "stage_b_client"
+path = "examples/stage_b_client.rs"
+
+[[example]]
+name = "scalable_client"
+path = "examples/scalable_client.rs"
+
+[[example]]
+name = "hardened_client"
+path = "examples/hardened_client.rs"
+
+[[example]]
+name = "verify_session_token"
+path = "examples/verify_session_token.rs"
+
+[[bin]]
+name = "legion-sidecar"
+path = "src/main.rs"
+
+[[bin]]
+name = "legion-hardened"
+path = "src/hardened_main.rs"
+
+
+

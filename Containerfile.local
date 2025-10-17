@@ -1,0 +1,31 @@
+# Local build without downloading base images
+# This assumes you have Rust installed locally
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy pre-built binary from your local build
+COPY target/release/legion-prover /app/legion-prover
+
+# Create data directory
+RUN mkdir -p /app/legion_data
+
+# Expose port
+EXPOSE 3031
+
+# Run as non-root user
+RUN useradd -m -u 1000 legion && chown -R legion:legion /app
+USER legion
+
+ENV RUST_LOG=info
+ENV LEGION_DATA_PATH=/app/legion_data
+
+CMD ["/app/legion-prover"]

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: legion-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  legion-backend:
+    build:
+      context: .
+      dockerfile: Containerfile.local
+    container_name: legion-backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SERVER_PORT=3031
+      - MERKLE_DEPTH=20
+      - RUST_LOG=info
+      - LEGION_DATA_PATH=/app/legion_data
+    ports:
+      - "3031:3031"
+    volumes:
+      - legion-data:/app/legion_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3031/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+  legion-data:
+    driver: local

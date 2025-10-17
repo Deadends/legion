@@ -1,0 +1,44 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'wasm-client/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Deploy WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      
+      - name: Build WASM
+        run: |
+          cd wasm-client
+          wasm-pack build --target web --release
+      
+      - name: Prepare deployment
+        run: |
+          mkdir -p deploy
+          cp -r wasm-client/pkg deploy/
+          cp wasm-client/index.html deploy/
+          
+          # Update API URL for production
+          sed -i 's|http://127.0.0.1:3031|${{ secrets.API_URL }}|g' deploy/index.html
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy
+          cname: ${{ secrets.CUSTOM_DOMAIN }}

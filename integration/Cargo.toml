@@ -1,0 +1,12 @@
+[package]
+name = "legion-integration"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+pasta_curves = "0.5"
+halo2_proofs = "0.3"
+legion-prover = { path = "../prover" }
+legion-verifier = { path = "../verifier" }
+ff = "0.13"

@@ -1,0 +1,30 @@
+[package]
+name = "legion-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core cryptographic dependencies
+halo2_proofs = "0.3"
+pasta_curves = "0.5"
+ff = "0.13"
+blake3 = "1.5"
+
+# Utility dependencies
+anyhow = "1.0"
+crypto-constants = { path = "../crypto-constants" }
+
+# Optional: for integration with prover
+legion-prover = { path = "../prover", optional = true }
+
+[dev-dependencies]
+# Test dependencies
+legion-prover = { path = "../prover" }
+
+[features]
+default = []
+integration-tests = ["legion-prover"]
+
+[[test]]
+name = "integration_tests"
+required-features = ["integration-tests"]

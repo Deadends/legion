@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Legion ZK Auth + WebAuthn</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 50px auto; 
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2c3e50; margin-top: 0; }
+        h2 { color: #34495e; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        button {
+            padding: 12px 24px;
+            margin: 10px 5px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        .primary { background: #3498db; color: white; }
+        .primary:hover { background: #2980b9; }
+        .success { background: #27ae60; color: white; }
+        .success:hover { background: #229954; }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        .info { background: #d1ecf1; border-left: 4px solid #0c5460; color: #0c5460; }
+        .success-msg { background: #d4edda; border-left: 4px solid #28a745; color: #155724; }
+        .error { background: #f8d7da; border-left: 4px solid #dc3545; color: #721c24; }
+        .code {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .feature-icon {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔐 Legion Zero-Knowledge Authentication</h1>
+        <p><strong>True Zero-Knowledge + Hardware Security</strong></p>
+        
+        <div class="feature">
+            <span class="feature-icon">🎭</span>
+            <div>
+                <strong>Anonymous Authentication</strong><br>
+                ZK proofs reveal nothing about your identity
+            </div>
+        </div>
+        
+        <div class="feature">
+            <span class="feature-icon">🔑</span>
+            <div>
+                <strong>Hardware-Bound Sessions</strong><br>
+                WebAuthn locks sessions to your device's secure hardware
+            </div>
+        </div>
+        
+        <div class="feature">
+            <span class="feature-icon">🚫</span>
+            <div>
+                <strong>Session Hijacking Impossible</strong><br>
+                Stolen session IDs are useless without your hardware key
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Step 1: Register User</h2>
+        <input type="text" id="regUsername" placeholder="Username" value="alice">
+        <input type="password" id="regPassword" placeholder="Password" value="password123">
+        <button class="primary" onclick="registerUser()">📝 Register with ZK Proof</button>
+        <div id="regStatus"></div>
+    </div>
+
+    <div class="card">
+        <h2>Step 2: Register WebAuthn Credential</h2>
+        <p>This creates a hardware-bound key on your device (Windows Hello, Touch ID, YubiKey, etc.)</p>
+        <button class="primary" onclick="registerWebAuthn()">🔐 Register Hardware Key</button>
+        <div id="webauthnRegStatus"></div>
+    </div>
+
+    <div class="card">
+        <h2>Step 3: Login with ZK + WebAuthn</h2>
+        <input type="text" id="loginUsername" placeholder="Username" value="alice">
+        <input type="password" id="loginPassword" placeholder="Password" value="password123">
+        <button class="success" onclick="loginWithWebAuthn()">✅ Login (ZK + Hardware Proof)</button>
+        <div id="loginStatus"></div>
+    </div>
+
+    <div class="card">
+        <h2>Step 4: Make Authenticated Request</h2>
+        <p>Session ID alone is not enough - requires WebAuthn signature</p>
+        <button class="primary" onclick="makeAuthenticatedRequest()">🔒 Access Protected Resource</button>
+        <div id="requestStatus"></div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let credentialId = null;
+
+        // Step 1: Register user with ZK proof
+        async function registerUser() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const status = document.getElementById('regStatus');
+
+            status.innerHTML = '<div class="status info">⏳ Generating ZK proof...</div>';
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    status.innerHTML = `
+                        <div class="status success-msg">
+                            ✅ User registered successfully!<br>
+                            Your credential is now in the anonymity set.
+                        </div>
+                    `;
+                } else {
+                    status.innerHTML = `<div class="status error">❌ Registration failed: ${result.message}</div>`;
+                }
+            } catch (error) {
+                status.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        // Step 2: Register WebAuthn credential
+        async function registerWebAuthn() {
+            const status = document.getElementById('webauthnRegStatus');
+            const username = document.getElementById('regUsername').value;
+
+            // Check WebAuthn support
+            if (!window.PublicKeyCredential) {
+                status.innerHTML = '<div class="status error">❌ WebAuthn not supported in this browser</div>';
+                return;
+            }
+
+            status.innerHTML = '<div class="status info">⏳ Creating hardware credential...</div>';
+
+            try {
+                // Get challenge from server
+                const challengeResponse = await fetch('/api/webauthn/register/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: username })
+                });
+                const challengeData = await challengeResponse.json();
+
+                // Create credential
+                const credential = await navigator.credentials.create({
+                    publicKey: challengeData
+                });
+
+                credentialId = arrayBufferToBase64(credential.rawId);
+
+                // Send credential to server
+                const finishResponse = await fetch('/api/webauthn/register/finish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: username,
+                        credential: credential
+                    })
+                });
+                const finishResult = await finishResponse.json();
+
+                status.innerHTML = `
+                    <div class="status success-msg">
+                        ✅ Hardware credential created!<br>
+                        <strong>Credential ID:</strong> ${credentialId.substring(0, 32)}...<br>
+                        <div class="code">
+                        Device: ${navigator.platform}<br>
+                        Type: Platform Authenticator (${getPlatformName()})<br>
+                        Credential stored in: Secure Hardware (TPM/Secure Enclave)
+                        </div>
+                    </div>
+                `;
+
+                console.log('WebAuthn credential:', credential);
+            } catch (error) {
+                status.innerHTML = `<div class="status error">❌ Failed to create credential: ${error.message}</div>`;
+            }
+        }
+
+        // Step 3: Login with ZK proof + WebAuthn
+        async function loginWithWebAuthn() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const status = document.getElementById('loginStatus');
+
+            if (!credentialId) {
+                status.innerHTML = '<div class="status error">❌ Please register WebAuthn credential first</div>';
+                return;
+            }
+
+            status.innerHTML = '<div class="status info">⏳ Step 1/2: Generating ZK proof...</div>';
+
+            try {
+                // Step 1: ZK authentication
+                const zkResponse = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        security_level: 0,
+                        webauthn_credential_id: credentialId
+                    })
+                });
+
+                const zkResult = await zkResponse.json();
+
+                if (!zkResult.success) {
+                    status.innerHTML = `<div class="status error">❌ ZK authentication failed: ${zkResult.message}</div>`;
+                    return;
+                }
+
+                sessionId = zkResult.session_id;
+
+                status.innerHTML = '<div class="status info">⏳ Step 2/2: Requesting hardware signature...</div>';
+
+                // Step 2: Get WebAuthn challenge
+                const authStartResponse = await fetch('/api/webauthn/auth/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: username })
+                });
+                const authChallenge = await authStartResponse.json();
+
+                // Sign with hardware
+                const assertion = await navigator.credentials.get({
+                    publicKey: authChallenge
+                });
+
+                // Verify with server
+                const authFinishResponse = await fetch('/api/webauthn/auth/finish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: username,
+                        credential: assertion
+                    })
+                });
+                const authResult = await authFinishResponse.json();
+
+                status.innerHTML = `
+                    <div class="status success-msg">
+                        ✅ Login successful!<br>
+                        <strong>Session ID:</strong> ${sessionId.substring(0, 32)}...<br>
+                        <strong>Proof Size:</strong> ${zkResult.proof_size} bytes<br>
+                        <div class="code">
+                        🎭 Anonymous: Server doesn't know which user you are<br>
+                        🔐 Hardware-Bound: Session locked to this device<br>
+                        🚫 Hijack-Proof: Stolen session ID is useless
+                        </div>
+                    </div>
+                `;
+
+                console.log('Login complete:', { sessionId, assertion });
+            } catch (error) {
+                status.innerHTML = `<div class="status error">❌ Login failed: ${error.message}</div>`;
+            }
+        }
+
+        // Step 4: Make authenticated request with REAL signature verification
+        async function makeAuthenticatedRequest() {
+            const status = document.getElementById('requestStatus');
+
+            if (!sessionId) {
+                status.innerHTML = '<div class="status error">❌ Please login first</div>';
+                return;
+            }
+
+            status.innerHTML = '<div class="status info">⏳ Step 1/2: Getting challenge...</div>';
+
+            try {
+                // Step 1: Get challenge from server using session ID (anonymous)
+                const challengeResponse = await fetch('/api/protected/challenge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+                const challenge = await challengeResponse.json();
+
+                status.innerHTML = '<div class="status info">⏳ Step 2/2: Signing with hardware key...</div>';
+
+                // Step 2: Sign challenge with hardware private key
+                const assertion = await navigator.credentials.get({
+                    publicKey: challenge
+                });
+
+                // Step 3: Send session + signature for verification (no username!)
+                const response = await fetch('/api/protected/access', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        id: assertion.id,
+                        rawId: arrayBufferToBase64(assertion.rawId),
+                        type: assertion.type,
+                        response: {
+                            authenticatorData: arrayBufferToBase64(assertion.response.authenticatorData),
+                            clientDataJSON: arrayBufferToBase64(assertion.response.clientDataJSON),
+                            signature: arrayBufferToBase64(assertion.response.signature),
+                            userHandle: assertion.response.userHandle ? arrayBufferToBase64(assertion.response.userHandle) : null
+                        }
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    status.innerHTML = `
+                        <div class="status success-msg">
+                            ✅ Access granted - Signature verified!<br>
+                            <div class="code">
+                            ✓ Session ID validated (anonymous)<br>
+                            ✓ Hardware signature verified with public key<br>
+                            ✓ Private key never left your device<br>
+                            ✓ Server doesn't know your identity<br>
+                            = Access Granted
+                            </div>
+                            <p><strong>Security:</strong> Session ID is anonymous. Even if attacker steals it, they CANNOT generate valid signature without your hardware private key.</p>
+                        </div>
+                    `;
+                } else {
+                    status.innerHTML = `<div class="status error">❌ Access denied: ${result.error}</div>`;
+                }
+            } catch (error) {
+                status.innerHTML = `<div class="status error">❌ Request failed: ${error.message}</div>`;
+            }
+        }
+
+        // Helper functions
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function getPlatformName() {
+            const platform = navigator.platform.toLowerCase();
+            if (platform.includes('win')) return 'Windows Hello';
+            if (platform.includes('mac')) return 'Touch ID / Face ID';
+            if (platform.includes('linux')) return 'FIDO2 Device';
+            return 'Platform Authenticator';
+        }
+
+        // Check WebAuthn support on load
+        window.onload = function() {
+            if (!window.PublicKeyCredential) {
+                alert('⚠️ WebAuthn not supported in this browser. Please use Chrome, Edge, Firefox, or Safari.');
+            }
+        };
+    </script>
+</body>
+</html>

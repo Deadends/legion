@@ -1,0 +1,27 @@
+[server]
+host = "0.0.0.0"
+port = 8443
+max_connections = 1000
+request_timeout_secs = 30
+shutdown_timeout_secs = 10
+
+[tls]
+cert_path = "cert.pem"
+key_path = "key.pem"
+client_auth = false
+
+[auth]
+hmac_key = "production-hmac-key-change-this-in-production-environment"
+ticket_ttl_secs = 300
+max_replay_window_secs = 60
+rate_limit_per_sec = 100
+
+[zk]
+verifier_pool_size = 4
+queue_capacity = 1000
+proof_timeout_secs = 60
+batch_size = 10
+
+[kms]
+provider = "mock"
+key_cache_ttl_secs = 300

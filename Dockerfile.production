@@ -1,0 +1,48 @@
+# Production Dockerfile for Legion with RocksDB + Redis
+FROM rust:1.75-bookworm AS builder
+
+# Install build dependencies for RocksDB
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    clang \
+    libclang-dev \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY crypto_constants ./crypto_constants
+COPY prover ./prover
+COPY verifier ./verifier
+COPY integration ./integration
+COPY legion-server ./legion-server
+
+# Build with RocksDB and Redis features
+RUN cargo build --release --bin legion-server --manifest-path legion-server/Cargo.toml
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/legion-server /app/legion-server
+
+# Create data directory
+RUN mkdir -p /app/data
+
+ENV REDIS_URL=redis://redis:6379
+ENV LEGION_DATA_PATH=/app/data
+ENV RUST_LOG=info
+
+EXPOSE 3001
+
+CMD ["/app/legion-server"]

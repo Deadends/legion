@@ -1,0 +1,39 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# WASM
+wasm-client/pkg/
+wasm-client/node_modules/
+wasm-client/package-lock.json
+
+# Data
+prover/legion_data/
+legion_data/
+*.db
+*.rdb
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/

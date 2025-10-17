@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: legion-data-pvc
+  namespace: legion
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legion-backend
+  namespace: legion
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: legion-backend
+  template:
+    metadata:
+      labels:
+        app: legion-backend
+    spec:
+      containers:
+      - name: legion-backend
+        image: legion-auth:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3031
+        env:
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: SERVER_PORT
+          value: "3031"
+        - name: MERKLE_DEPTH
+          value: "20"
+        - name: RUST_LOG
+          value: "info"
+        - name: LEGION_DATA_PATH
+          value: "/app/legion_data"
+        volumeMounts:
+        - name: legion-data
+          mountPath: /app/legion_data
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3031
+          initialDelaySeconds: 40
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3031
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: legion-data
+        persistentVolumeClaim:
+          claimName: legion-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legion-backend
+  namespace: legion
+spec:
+  selector:
+    app: legion-backend
+  ports:
+  - port: 3031
+    targetPort: 3031
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: legion-backend-hpa
+  namespace: legion
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: legion-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

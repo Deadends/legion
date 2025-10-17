@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legion | Enterprise Zero-Knowledge Authentication</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #ffffff;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 48px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo h1 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .logo p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 32px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 10px;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 12px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .tab.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.8);
+            letter-spacing: 0.3px;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 15px;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+            transition: all 0.3s ease;
+        }
+        
+        select {
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            padding-right: 40px;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+        }
+        
+        select::-ms-expand {
+            display: none;
+        }
+        
+        select option {
+            background: rgba(15, 12, 41, 0.98);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 14px;
+            font-weight: 300;
+            border: none;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #ffffff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            letter-spacing: 0.3px;
+            margin-top: 8px;
+        }
+        
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+        
+        .success {
+            background: rgba(46, 204, 113, 0.15);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            color: #2ecc71;
+        }
+        
+        .error {
+            background: rgba(231, 76, 60, 0.15);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            color: #e74c3c;
+        }
+        
+        .info {
+            background: rgba(52, 152, 219, 0.15);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            color: #3498db;
+        }
+        
+        .architecture-info {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 24px;
+        }
+        
+        .architecture-info h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            letter-spacing: 0.3px;
+        }
+        
+        .architecture-info p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            margin: 6px 0;
+            line-height: 1.6;
+        }
+        
+        .architecture-info strong {
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>LEGION</h1>
+            <p>Zero-Knowledge Authentication</p>
+        </div>
+        
+        <div class="architecture-info">
+            <h3>Enterprise-Grade Security</h3>
+            <p><strong>Halo2 PLONK</strong> — Trustless cryptographic proofs</p>
+            <p><strong>Merkle Trees</strong> — Persistent anonymity guarantees</p>
+            <p><strong>Nullifiers</strong> — Replay attack prevention</p>
+            <p><strong>Hardware Binding</strong> — Device-level security</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('register')">Register</button>
+            <button class="tab" onclick="switchTab('login')">Authenticate</button>
+        </div>
+
+        <div id="register" class="tab-content active">
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="regUsername">Username</label>
+                    <input type="text" id="regUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="Enter password" required>
+                </div>
+                <button type="submit" id="registerButton">Register Account</button>
+            </form>
+            <div id="registerStatus"></div>
+        </div>
+
+        <div id="login" class="tab-content">
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter password" required>
+                </div>
+                <div class="form-group">
+                    <label for="securityLevel">Security Level</label>
+                    <select id="securityLevel">
+                        <option value="12">Development (k=12) — 10 seconds</option>
+                        <option value="14" selected>Standard (k=14) — 60 seconds</option>
+                        <option value="16">Production (k=16) — 4 minutes</option>
+                        <option value="18">Maximum (k=18) — 15 minutes</option>
+                    </select>
+                </div>
+                <button type="submit" id="loginButton">Generate Proof & Authenticate</button>
+            </form>
+            <div id="loginStatus"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { authenticate_user, register_user } from './pkg/legion_wasm_client.js';
+
+        const SERVER_URL = 'http://127.0.0.1:3001';
+
+        window.switchTab = function(tab) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            
+            tabs.forEach(t => {
+                if (t.textContent.includes(tab === 'register' ? 'Register' : 'Authenticate')) {
+                    t.classList.add('active');
+                }
+            });
+            
+            document.getElementById(tab).classList.add('active');
+        };
+
+        function showStatus(elementId, message, type) {
+            const status = document.getElementById(elementId);
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        async function run() {
+            await init();
+            
+            document.getElementById('registerForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const button = document.getElementById('registerButton');
+                const originalText = button.textContent;
+                
+                try {
+                    button.disabled = true;
+                    button.textContent = 'Processing...';
+                    
+                    const username = document.getElementById('regUsername').value;
+                    const password = document.getElementById('regPassword').value;
+                    
+                    showStatus('registerStatus', 'Adding user to anonymity set...', 'info');
+                    
+                    const response = await register_user(username, password, SERVER_URL);
+                    
+                    if (response.success) {
+                        showStatus('registerStatus', response.message || 'Registration successful', 'success');
+                        document.getElementById('regUsername').value = '';
+                        document.getElementById('regPassword').value = '';
+                    } else {
+                        showStatus('registerStatus', response.message || 'Registration failed', 'error');
+                    }
+                } catch (error) {
+                    showStatus('registerStatus', `Error: ${error}`, 'error');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            });
+
+            document.getElementById('loginForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const button = document.getElementById('loginButton');
+                const originalText = button.textContent;
+                
+                try {
+                    button.disabled = true;
+                    button.textContent = 'Generating Proof...';
+                    
+                    const username = document.getElementById('loginUsername').value;
+                    const password = document.getElementById('loginPassword').value;
+                    const k = parseInt(document.getElementById('securityLevel').value);
+                    
+                    showStatus('loginStatus', `Generating zero-knowledge proof (k=${k})...`, 'info');
+                    const startTime = performance.now();
+                    
+                    const result = await authenticate_user(username, password, k, SERVER_URL);
+                    const totalTime = Math.round(performance.now() - startTime);
+                    
+                    if (result.success) {
+                        showStatus('loginStatus', `Authentication successful | ${totalTime}ms`, 'success');
+                        
+                        if (result.session_token) {
+                            localStorage.setItem('legion_session', result.session_token);
+                            setTimeout(() => {
+                                window.location.href = `welcome.html?session=${result.session_token}`;
+                            }, 1500);
+                        }
+                    } else {
+                        showStatus('loginStatus', result.message || 'Authentication failed', 'error');
+                    }
+                } catch (error) {
+                    showStatus('loginStatus', `Error: ${error}`, 'error');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            });
+        }
+
+        run().catch(console.error);
+    </script>
+</body>
+</html>
