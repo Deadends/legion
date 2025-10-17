@@ -38,14 +38,14 @@ rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 
 # Start Redis
-redis-server redis.conf
+redis-server
 
 # Run tests
 cargo test --workspace
 
 # Start development server
-cd prover
-cargo run
+cd legion-server
+cargo run --release --features redis
 ```
 
 ## 🎯 How to Contribute
@@ -171,16 +171,20 @@ Files to update:
 
 ```
 legion/
-├── prover/              # Backend server
+├── legion-server/       # Backend server (Axum, verifies proofs)
 │   ├── src/
 │   │   ├── main.rs      # Entry point
+│   │   └── webauthn_handlers.rs
+│   └── Cargo.toml
+├── prover/              # ZK proof library (Halo2 circuits)
+│   ├── src/
 │   │   ├── auth_circuit.rs
 │   │   ├── proof_generator.rs
 │   │   └── ...
 │   └── Cargo.toml
-├── verifier/            # Proof verification
-├── wasm-client/         # Frontend WASM
-├── k8s/                 # Kubernetes manifests
+├── wasm-client/         # Frontend (Browser, generates proofs)
+├── verifier/            # Verification utilities
+├── sidecar/             # Optional TLS proxy
 └── docs/                # Documentation
 ```
 
