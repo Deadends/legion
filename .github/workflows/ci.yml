@@ -97,7 +97,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: deadends/legion-server
+          images: nantha01/legion-server
           tags: |
             type=raw,value=latest
             type=sha,prefix={{branch}}-

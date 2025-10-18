@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: deadends/legion-server
+  IMAGE_NAME: nantha01/legion-server
 
 jobs:
   build:
