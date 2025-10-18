@@ -110,15 +110,15 @@ python3 -m http.server 8000
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                            CLIENT (Browser)                              │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────────┐ │
-│  │  UI Layer      │  │  WASM Module    │  │  Hardware Security       │ │
-│  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (WebAuthn Level 2)      │ │
-│  ├────────────────┤  ├─────────────────┤  ├──────────────────────────┤ │
-│  │ • Registration │  │ • Blake3 Hash   │  │ • TPM 2.0                │ │
-│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Secure Enclave         │ │
-│  │ • Session UI   │  │ • Halo2 Prover  │  │ • FIDO2 Authenticator    │ │
-│  │ • Error Handle │  │ • Merkle Proof  │  │ • Device Private Key     │ │
-│  └────────────────┘  └─────────────────┘  └──────────────────────────┘ │
+│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────────┐   │
+│  │  UI Layer      │  │  WASM Module    │  │  Hardware Security       │   │
+│  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (WebAuthn Level 2)      │   │
+│  ├────────────────┤  ├─────────────────┤  ├──────────────────────────┤   │
+│  │ • Registration │  │ • Blake3 Hash   │  │ • TPM 2.0                │   │
+│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Secure Enclave         │   │
+│  │ • Session UI   │  │ • Halo2 Prover  │  │ • FIDO2 Authenticator    │   │
+│  │ • Error Handle │  │ • Merkle Proof  │  │ • Device Private Key     │   │
+│  └────────────────┘  └─────────────────┘  └──────────────────────────┘   │
 └────────────────────────────────┬─────────────────────────────────────────┘
                                  │ HTTPS/TLS 1.3
                                  │ (Encrypted Channel)
@@ -135,29 +135,29 @@ python3 -m http.server 8000
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    LEGION SERVER (Rust/Axum)                             │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                      API Layer (Axum)                           │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ POST /register        │ POST /auth/challenge │ POST /auth/verify│    │
-│  │ POST /auth/session    │ GET  /health         │ POST /logout     │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────────┐     │
+│  │                      API Layer (Axum)                           │     │
+│  ├─────────────────────────────────────────────────────────────────┤     │
+│  │ POST /register        │ POST /auth/challenge │ POST /auth/verify│     │
+│  │ POST /auth/session    │ GET  /health         │ POST /logout     │     │
+│  └─────────────────────────────────────────────────────────────────┘     │
 │                                   │                                      │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                   Business Logic Layer                          │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ • Credential Manager    │ • Challenge Generator (32-byte random)│    │
-│  │ • Merkle Tree Builder   │ • Nullifier Tracker (replay protection)│   │
-│  │ • ZK Proof Verifier     │ • Session Manager (linkability tags)  │    │
-│  │ • Device Tree Manager   │ • Timestamp Validator (±5min window)  │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────────┐     │
+│  │                   Business Logic Layer                          │     │
+│  ├─────────────────────────────────────────────────────────────────┤     │
+│  │ • Credential Manager    │ • Challenge Generator (32-byte random)│     │
+│  │ • Merkle Tree Builder   │ • Nullifier Tracker (replay protection)│    │
+│  │ • ZK Proof Verifier     │ • Session Manager (linkability tags)  │     │
+│  │ • Device Tree Manager   │ • Timestamp Validator (±5min window)  │     │
+│  └─────────────────────────────────────────────────────────────────┘     │
 │                                   │                                      │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                   Cryptographic Layer                           │    │
-│  ├─────────────────────────────────────────────────────────────────┤    │
-│  │ • Halo2 Verifier (PLONK) │ • Poseidon Hash (ZK-friendly)       │    │
-│  │ • Blake3 (credential hash)│ • Argon2id (password KDF)          │    │
-│  │ • Merkle Tree (2^20 users)│ • Device Tree (2^10 devices/user)  │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────────┐     │
+│  │                   Cryptographic Layer                           │     │
+│  ├─────────────────────────────────────────────────────────────────┤     │
+│  │ • Halo2 Verifier (PLONK) │ • Poseidon Hash (ZK-friendly)        │     │
+│  │ • Blake3 (credential hash)│ • Argon2id (password KDF)           │     │
+│  │ • Merkle Tree (2^20 users)│ • Device Tree (2^10 devices/user)   │     │
+│  └─────────────────────────────────────────────────────────────────┘     │
 └────────────────────────┬──────────────────────┬──────────────────────────┘
                          │                      │
                          ▼                      ▼
@@ -197,7 +197,7 @@ python3 -m http.server 8000
        │                                                              │
        │ 5. Compute linkability tag (session binding)                 │
        │    linkability_tag = Blake3(device_pubkey || nullifier)      │
-       │    ⚠️  Binds session to specific device+user                 │
+       │    ⚠️  Binds session to specific device+user                 │        
        │                                                              │
        │ 6. Generate ZK proof (Halo2 PLONK, ~4min for k=16)           │
        │    Proves in zero-knowledge:                                 │
@@ -240,71 +240,71 @@ python3 -m http.server 8000
 │                    SESSION SECURITY MECHANISMS                          │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. LINKABILITY TAG (Zero-Knowledge Device Binding)                    │
-│  ═══════════════════════════════════════════════════════               │
+│  1. LINKABILITY TAG (Zero-Knowledge Device Binding)                     │
+│  ═══════════════════════════════════════════════════════                │
 │                                                                         │
-│     linkability_tag = Blake3(device_pubkey || nullifier)               │
+│     linkability_tag = Blake3(device_pubkey || nullifier)                │
 │                                                                         │
-│     • Computed client-side using hardware-bound device key             │
-│     • Sent with every session validation request                       │
-│     • Server verifies: stored_tag == provided_tag                      │
+│     • Computed client-side using hardware-bound device key              │
+│     • Sent with every session validation request                        │
+│     • Server verifies: stored_tag == provided_tag                       │
 │                                                                         │
 │     ✅ PREVENTS: Session token theft/replay on different device        │
 │     ✅ ENSURES: Same user + same device for entire session             │
 │     ✅ MAINTAINS: Zero-knowledge (server doesn't learn identity)       │
 │                                                                         │
-│  ─────────────────────────────────────────────────────────────────     │
+│  ─────────────────────────────────────────────────────────────────      │
 │                                                                         │
-│  2. SESSION TOKEN (Cryptographic Binding)                              │
-│  ═══════════════════════════════════════════════════════               │
+│  2. SESSION TOKEN (Cryptographic Binding)                               │
+│  ═══════════════════════════════════════════════════════                │
 │                                                                         │
-│     session_token = Poseidon(nullifier || timestamp || linkability_tag)│
+│     session_token = Poseidon(nullifier || timestamp || linkability_tag) │
 │                                                                         │
-│     • Generated server-side after proof verification                   │
-│     • Stored in Redis with linkability_tag as value                    │
-│     • Cannot be forged without knowing nullifier                       │
+│     • Generated server-side after proof verification                    │
+│     • Stored in Redis with linkability_tag as value                     │
+│     • Cannot be forged without knowing nullifier                        │
 │                                                                         │
 │     ✅ PREVENTS: Token forgery                                         │
 │     ✅ ENSURES: Cryptographic binding to proof                         │
-│                                                                        │
-│  ─────────────────────────────────────────────────────────────────     │
-│                                                                        │
-│  3. NULLIFIER (Replay Protection)                                      │
-│  ═══════════════════════════════════════════════════════               │
-│                                                                        │
-│     nullifier = Poseidon(credential_hash || challenge)                 │
-│                                                                        │
-│     • Unique per authentication attempt                                │
-│     • Tracked in RocksDB (permanent) and Redis (cache)                 │
-│     • Server rejects if nullifier seen before                          │
-│                                                                        │
+│                                                                         │
+│  ─────────────────────────────────────────────────────────────────      │
+│                                                                         │
+│  3. NULLIFIER (Replay Protection)                                       │
+│  ═══════════════════════════════════════════════════════                │
+│                                                                         │
+│     nullifier = Poseidon(credential_hash || challenge)                  │
+│                                                                         │
+│     • Unique per authentication attempt                                 │
+│     • Tracked in RocksDB (permanent) and Redis (cache)                  │
+│     • Server rejects if nullifier seen before                           │
+│                                                                         │
 │     ✅ PREVENTS: Proof replay attacks                                  │
 │     ✅ ENSURES: One-time use per challenge                             │
-│                                                                        │
-│  ─────────────────────────────────────────────────────────────────     │
-│                                                                        │
-│  4. TIMESTAMP VALIDATION (Time-Bound Security)                         │
-│  ═══════════════════════════════════════════════════════               │
-│                                                                        │
-│     • Proof includes timestamp (Unix epoch)                            │
-│     • Server validates: |proof_time - server_time| < 5 minutes         │
-│     • Session TTL: 1 hour (sliding window)                             │
-│                                                                        │
+│                                                                         │
+│  ─────────────────────────────────────────────────────────────────      │
+│                                                                         │
+│  4. TIMESTAMP VALIDATION (Time-Bound Security)                          │
+│  ═══════════════════════════════════════════════════════                │
+│                                                                         │
+│     • Proof includes timestamp (Unix epoch)                             │
+│     • Server validates: |proof_time - server_time| < 5 minutes          │
+│     • Session TTL: 1 hour (sliding window)                              │
+│                                                                         │
 │     ✅ PREVENTS: Old proof replay                                      │
 │     ✅ ENSURES: Fresh authentication                                   │
-│                                                                        │
-│  ─────────────────────────────────────────────────────────────────     │
-│                                                                        │
-│  5. CHALLENGE-RESPONSE (Freshness Guarantee)                           │
-│  ═══════════════════════════════════════════════════════               │
-│                                                                        │
-│     • Server generates random 32-byte challenge                        │
-│     • Stored in Redis with 5-minute TTL                                │
-│     • Client must include in proof                                     │
-│     • Server verifies challenge matches and deletes                    │
-│                                                                        │
-│     ✅ PREVENTS: Pre-computed proof attacks                            │
-│     ✅ ENSURES: Proof generated for this specific session              │
+│                                                                         │
+│  ─────────────────────────────────────────────────────────────────      │
+│                                                                         │
+│  5. CHALLENGE-RESPONSE (Freshness Guarantee)                            │
+│  ═══════════════════════════════════════════════════════                │
+│                                                                         │
+│     • Server generates random 32-byte challenge                         │
+│     • Stored in Redis with 5-minute TTL                                 │
+│     • Client must include in proof                                      │
+│     • Server verifies challenge matches and deletes                     │
+│                                                                         │
+│     ✅ PREVENTS: Pre-computed proof attacks                             │
+│     ✅ ENSURES: Proof generated for this specific session               │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
