@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
 
 # Copy workspace
 COPY Cargo.toml Cargo.lock ./
+COPY crypto_constants ./crypto_constants
+COPY verifier ./verifier
 COPY prover ./prover
 COPY legion-server ./legion-server
 
