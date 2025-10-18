@@ -31,32 +31,63 @@ Legion is a production-ready zero-knowledge authentication system that proves yo
 | Password Hashing | Argon2id |
 | Hardware Binding | WebAuthn Level 2 |
 
-## 🚀 Quick Start (Local Demo)
+## 🚀 Quick Start (One Command!)
+
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) (includes Docker Compose)
+
+### Install & Run
 
 ```bash
-# 1. Clone repository
+# Clone and run
 git clone https://github.com/deadends/legion.git
 cd legion
 
-# 2. Install Redis (required for sessions)
+# Linux/macOS
+chmod +x install.sh && ./install.sh
+
+# Windows
+install.bat
+```
+
+**That's it!** Open http://localhost in your browser.
+
+### What Gets Installed
+- ✅ Redis (session storage)
+- ✅ Legion Server (ZK proof verifier)
+- ✅ Frontend (WASM client)
+- ✅ Nginx (reverse proxy)
+
+**Performance**: Registration ~10s, Authentication ~4min (k=16 proof generation)
+
+---
+
+### Manual Setup (Without Docker)
+
+<details>
+<summary>Click to expand manual installation</summary>
+
+```bash
+# 1. Install Redis
 # macOS: brew install redis && redis-server
 # Ubuntu: sudo apt install redis && redis-server
 # Windows: https://redis.io/docs/install/install-redis/install-redis-on-windows/
 
-# 3. Run server (in one terminal)
+# 2. Run server (terminal 1)
 cd legion-server
 cargo run --release --features redis
 
-# 4. Build and serve frontend (in another terminal)
+# 3. Build frontend (terminal 2)
 cd wasm-client
 wasm-pack build --target web --release
 python3 -m http.server 8000
 
-# 5. Open browser: http://localhost:8000
-# Register → Authenticate → See zero-knowledge magic! ✨
+# 4. Open http://localhost:8000
 ```
 
-**Expected**: Registration ~10s, Authentication ~4 minutes (k=16 proof generation)
+</details>
+
+---
 
 **For production deployment**, see [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -71,36 +102,211 @@ python3 -m http.server 8000
 
 ## 🏗️ Architecture
 
+**📖 For detailed step-by-step authentication flow with cryptographic details, see [ARCHITECTURE_FLOW.md](ARCHITECTURE_FLOW.md)**
+
+### System Components
+
 ```
-┌─────────────┐                    ┌──────────────┐
-│   Client    │                    │    Server    │
-│  (Browser)  │                    │  (Verifier)  │
-└──────┬──────┘                    └──────┬───────┘
-       │                                  │
-       │ 1. Hash credentials (Blake3)     │
-       │    + Argon2id password           │
-       │                                  │
-       │ 2. Request Merkle path      ────►│
-       │                             ◄────│ Path + Challenge
-       │                                  │
-       │ 3. Generate WebAuthn key         │
-       │    (TPM/Secure Enclave)          │
-       │                                  │
-       │ 4. Compute linkability tag       │
-       │    Blake3(device_pk || nullifier)│
-       │                                  │
-       │ 5. Generate ZK proof (Halo2)     │
-       │    - User in Merkle tree         │
-       │    - Device in device tree       │
-       │    - Credential valid            │
-       │    - Nullifier computed          │
-       │                                  │
-       │ 6. Submit proof             ────►│
-       │                             ◄────│ Session token
-       │                                  │
-       │ 7. Verify session           ────►│
-       │    (linkability tag binding) ◄───│ Welcome!
-       │                                  │
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            CLIENT (Browser)                              │
+├──────────────────────────────────────────────────────────────────────────┤
+│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────────┐ │
+│  │  UI Layer      │  │  WASM Module    │  │  Hardware Security       │ │
+│  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (WebAuthn Level 2)      │ │
+│  ├────────────────┤  ├─────────────────┤  ├──────────────────────────┤ │
+│  │ • Registration │  │ • Blake3 Hash   │  │ • TPM 2.0                │ │
+│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Secure Enclave         │ │
+│  │ • Session UI   │  │ • Halo2 Prover  │  │ • FIDO2 Authenticator    │ │
+│  │ • Error Handle │  │ • Merkle Proof  │  │ • Device Private Key     │ │
+│  └────────────────┘  └─────────────────┘  └──────────────────────────┘ │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │ HTTPS/TLS 1.3
+                                 │ (Encrypted Channel)
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         REVERSE PROXY (Nginx)                            │
+├──────────────────────────────────────────────────────────────────────────┤
+│  • TLS Termination          • Rate Limiting (100 req/min)                │
+│  • Load Balancing           • Request Logging                            │
+│  • Static File Serving      • Security Headers (CSP, HSTS)               │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │ HTTP (Internal Network)
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    LEGION SERVER (Rust/Axum)                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                      API Layer (Axum)                           │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ POST /register        │ POST /auth/challenge │ POST /auth/verify│    │
+│  │ POST /auth/session    │ GET  /health         │ POST /logout     │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                   │                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                   Business Logic Layer                          │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ • Credential Manager    │ • Challenge Generator (32-byte random)│    │
+│  │ • Merkle Tree Builder   │ • Nullifier Tracker (replay protection)│   │
+│  │ • ZK Proof Verifier     │ • Session Manager (linkability tags)  │    │
+│  │ • Device Tree Manager   │ • Timestamp Validator (±5min window)  │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                   │                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                   Cryptographic Layer                           │    │
+│  ├─────────────────────────────────────────────────────────────────┤    │
+│  │ • Halo2 Verifier (PLONK) │ • Poseidon Hash (ZK-friendly)       │    │
+│  │ • Blake3 (credential hash)│ • Argon2id (password KDF)          │    │
+│  │ • Merkle Tree (2^20 users)│ • Device Tree (2^10 devices/user)  │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└────────────────────────┬──────────────────────┬──────────────────────────┘
+                         │                      │
+                         ▼                      ▼
+        ┌────────────────────────┐  ┌───────────────────────────┐
+        │   Redis (In-Memory)    │  │  RocksDB (Persistent)     │
+        ├────────────────────────┤  ├───────────────────────────┤
+        │ • Session Tokens       │  │ • User Credentials        │
+        │ • Linkability Tags     │  │ • Merkle Tree Nodes       │
+        │ • Active Challenges    │  │ • Device Trees            │
+        │ • Nullifier Cache      │  │ • Nullifier History       │
+        │ TTL: 1 hour            │  │ Persistent Storage        │
+        └────────────────────────┘  └───────────────────────────┘
+```
+
+### Authentication Flow (Simplified)
+
+```
+┌─────────────┐                                                ┌──────────────┐
+│   Client    │                                                │    Server    │
+│  (Browser)  │                                                │  (Verifier)  │
+└──────┬──────┘                                                └──────┬───────┘
+       │                                                              │
+       │ 1. Hash credentials (Blake3 + Argon2id)                      │
+       │    credential_hash = Blake3(username) || Argon2id(password)  │
+       │                                                              │
+       │ 2. Request Merkle path + challenge                      ────►│
+       │                                                         ◄────│ {merkle_path, challenge,
+       │                                                              │  device_merkle_root}
+       │                                                              │
+       │ 3. Generate WebAuthn key (TPM/Secure Enclave)                │
+       │    → device_pubkey (hardware-bound, ECDSA P-256)             │
+       │    → User gesture required (touch/biometric)                 │
+       │                                                              │
+       │ 4. Compute nullifier (replay protection)                     │
+       │    nullifier = Poseidon(credential_hash || challenge)        │
+       │    → Check if nullifier already exists (abort if yes)        │
+       │                                                              │
+       │ 5. Compute linkability tag (session binding)                 │
+       │    linkability_tag = Blake3(device_pubkey || nullifier)      │
+       │    ⚠️  Binds session to specific device+user                 │
+       │                                                              │
+       │ 6. Generate ZK proof (Halo2 PLONK, ~4min for k=16)           │
+       │    Proves in zero-knowledge:                                 │
+       │    ✓ User exists in Merkle tree (1 of 2^20)                  │
+       │    ✓ Device exists in device tree (1 of 2^10)                │
+       │    ✓ Credential hash is correct                              │
+       │    ✓ Nullifier computed correctly                            │
+       │    ✓ Challenge binding valid                                 │
+       │    WITHOUT revealing which user or device                    │
+       │                                                              │
+       │ 7. Submit proof                                         ────►│
+       │    {proof, public_inputs, linkability_tag}                   │
+       │                                                              │ • Verify timestamp (±5min)
+       │                                                              │ • Check nullifier (replay?)
+       │                                                              │ • Verify ZK proof (~10ms)
+       │                                                              │ • Validate challenge
+       │                                                              │ • Mark nullifier as used
+       │                                                              │
+       │                                                         ◄────│ {session_token, expires_at}
+       │                                                              │
+       │ 8. Verify session (every request)                       ────►│
+       │    {session_token, linkability_tag}                          │
+       │                                                              │ • Lookup in Redis
+       │                                                              │ • Verify linkability_tag
+       │                                                              │   (prevents session theft)
+       │                                                         ◄────│ {valid: true}
+       │                                                              │
+```
+
+**🔍 Want more details?** See [ARCHITECTURE_FLOW.md](ARCHITECTURE_FLOW.md) for:
+- Step-by-step cryptographic operations
+- Circuit constraint details
+- Security property explanations
+- Attack resistance mechanisms
+
+### Session Security Deep Dive
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SESSION SECURITY MECHANISMS                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. LINKABILITY TAG (Zero-Knowledge Device Binding)                    │
+│  ═══════════════════════════════════════════════════════               │
+│                                                                         │
+│     linkability_tag = Blake3(device_pubkey || nullifier)               │
+│                                                                         │
+│     • Computed client-side using hardware-bound device key             │
+│     • Sent with every session validation request                       │
+│     • Server verifies: stored_tag == provided_tag                      │
+│                                                                         │
+│     ✅ PREVENTS: Session token theft/replay on different device        │
+│     ✅ ENSURES: Same user + same device for entire session             │
+│     ✅ MAINTAINS: Zero-knowledge (server doesn't learn identity)       │
+│                                                                         │
+│  ─────────────────────────────────────────────────────────────────     │
+│                                                                         │
+│  2. SESSION TOKEN (Cryptographic Binding)                              │
+│  ═══════════════════════════════════════════════════════               │
+│                                                                         │
+│     session_token = Poseidon(nullifier || timestamp || linkability_tag)│
+│                                                                         │
+│     • Generated server-side after proof verification                   │
+│     • Stored in Redis with linkability_tag as value                    │
+│     • Cannot be forged without knowing nullifier                       │
+│                                                                         │
+│     ✅ PREVENTS: Token forgery                                         │
+│     ✅ ENSURES: Cryptographic binding to proof                         │
+│                                                                        │
+│  ─────────────────────────────────────────────────────────────────     │
+│                                                                        │
+│  3. NULLIFIER (Replay Protection)                                      │
+│  ═══════════════════════════════════════════════════════               │
+│                                                                        │
+│     nullifier = Poseidon(credential_hash || challenge)                 │
+│                                                                        │
+│     • Unique per authentication attempt                                │
+│     • Tracked in RocksDB (permanent) and Redis (cache)                 │
+│     • Server rejects if nullifier seen before                          │
+│                                                                        │
+│     ✅ PREVENTS: Proof replay attacks                                  │
+│     ✅ ENSURES: One-time use per challenge                             │
+│                                                                        │
+│  ─────────────────────────────────────────────────────────────────     │
+│                                                                        │
+│  4. TIMESTAMP VALIDATION (Time-Bound Security)                         │
+│  ═══════════════════════════════════════════════════════               │
+│                                                                        │
+│     • Proof includes timestamp (Unix epoch)                            │
+│     • Server validates: |proof_time - server_time| < 5 minutes         │
+│     • Session TTL: 1 hour (sliding window)                             │
+│                                                                        │
+│     ✅ PREVENTS: Old proof replay                                      │
+│     ✅ ENSURES: Fresh authentication                                   │
+│                                                                        │
+│  ─────────────────────────────────────────────────────────────────     │
+│                                                                        │
+│  5. CHALLENGE-RESPONSE (Freshness Guarantee)                           │
+│  ═══════════════════════════════════════════════════════               │
+│                                                                        │
+│     • Server generates random 32-byte challenge                        │
+│     • Stored in Redis with 5-minute TTL                                │
+│     • Client must include in proof                                     │
+│     • Server verifies challenge matches and deletes                    │
+│                                                                        │
+│     ✅ PREVENTS: Pre-computed proof attacks                            │
+│     ✅ ENSURES: Proof generated for this specific session              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🔐 Zero-Knowledge Properties
