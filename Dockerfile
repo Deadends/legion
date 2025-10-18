@@ -7,6 +7,8 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    libclang-dev \
+    clang \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace
