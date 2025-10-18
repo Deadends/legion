@@ -89,7 +89,7 @@ python3 -m http.server 8000
 
 ---
 
-**For production deployment**, see [DEPLOYMENT.md](DEPLOYMENT.md)
+**For production deployment**, see [DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## 📊 Performance
 
@@ -102,7 +102,7 @@ python3 -m http.server 8000
 
 ## 🏗️ Architecture
 
-**📖 For detailed step-by-step authentication flow with cryptographic details, see [ARCHITECTURE_FLOW.md](ARCHITECTURE_FLOW.md)**
+**📖 For detailed step-by-step authentication flow with cryptographic details, see [ARCHITECTURE_FLOW.md](docs/ARCHITECTURE_FLOW.md)**
 
 ### System Components
 
@@ -227,7 +227,7 @@ python3 -m http.server 8000
        │                                                              │
 ```
 
-**🔍 Want more details?** See [ARCHITECTURE_FLOW.md](ARCHITECTURE_FLOW.md) for:
+**🔍 Want more details?** See [ARCHITECTURE_FLOW.md](docs/ARCHITECTURE_FLOW.md) for:
 - Step-by-step cryptographic operations
 - Circuit constraint details
 - Security property explanations
@@ -325,7 +325,7 @@ python3 -m http.server 8000
 
 ## 📦 Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production deployment guide.
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed production deployment guide.
 
 ### Quick Deploy with Docker
 
@@ -363,10 +363,10 @@ cargo bench
 
 ## 📚 Documentation
 
-- [Deployment Guide](DEPLOYMENT.md) - Production deployment
-- [Security Policy](SECURITY.md) - Security guarantees and reporting
-- [API Documentation](docs/API.md) - REST API reference
-- [Architecture](docs/ARCHITECTURE.md) - System design details
+- [Architecture Flow](docs/ARCHITECTURE_FLOW.md) - Detailed authentication flow
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
+- [Security Policy](docs/SECURITY.md) - Security guarantees and reporting
+- [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
 
 ## 🛠️ Technology Stack
 
@@ -380,7 +380,7 @@ cargo bench
 
 ## 🤝 Contributing
 
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Contributions welcome! Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first.
 
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/amazing`)
@@ -390,7 +390,7 @@ Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## 🔒 Security
 
-Found a security issue? See [SECURITY.md](SECURITY.md) for responsible disclosure.
+Found a security issue? See [SECURITY.md](docs/SECURITY.md) for responsible disclosure.
 
 **DO NOT** open public issues for vulnerabilities.
 
