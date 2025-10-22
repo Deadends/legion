@@ -58,13 +58,22 @@ fn check_rate_limit(&self, nullifier_hash: &[u8; 32]) -> Result<()> {
     }
     
     if count > 5 {
-        return Err(anyhow!("Rate limit exceeded: max 5 attempts per hour"));
+        // SECURITY: Generic error prevents credential enumeration
+        return Err(anyhow!("Authentication failed"));
     }
     Ok(())
 }
 ```
 
-**Impact**: Brute force attacks now limited to 5 attempts per hour per credential.
+**Security Consideration**:
+- Returns **generic "Authentication failed"** error (not "Rate limit exceeded")
+- Prevents credential enumeration attacks
+- Attacker cannot distinguish between:
+  - Invalid credentials
+  - Rate limit exceeded
+  - Device revoked
+
+**Impact**: Brute force attacks limited to 5 attempts/hour. No information leakage.
 
 ---
 

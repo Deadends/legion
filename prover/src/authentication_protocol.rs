@@ -428,6 +428,7 @@ impl AuthenticationProtocol {
         let nullifier_bytes: [u8; 32] = *blake3::hash(&nullifier.to_repr()).as_bytes();
         
         // RATE LIMITING: Check attempts before nullifier check
+        // Returns generic "Authentication failed" on rate limit
         self.check_rate_limit(&nullifier_bytes)?;
         
         if self.check_nullifier_exists(nullifier_bytes)? {
@@ -691,6 +692,7 @@ impl AuthenticationProtocol {
     }
 
     /// RATE LIMITING: Check authentication attempts
+    /// Returns generic error to prevent credential enumeration
     fn check_rate_limit(&self, nullifier_hash: &[u8; 32]) -> Result<()> {
         #[cfg(feature = "redis")]
         {
@@ -705,7 +707,8 @@ impl AuthenticationProtocol {
                 }
                 
                 if count > 5 {
-                    return Err(anyhow!("Rate limit exceeded: max 5 attempts per hour"));
+                    // SECURITY: Generic error prevents credential enumeration
+                    return Err(anyhow!("Authentication failed"));
                 }
             }
         }

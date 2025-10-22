@@ -19,7 +19,7 @@ Legion is a production-ready zero-knowledge authentication system that proves yo
 - ✅ **Hardware Security**: WebAuthn TPM/Secure Enclave binding
 - ✅ **Replay Protection**: Nullifiers + timestamps
 - ✅ **Session Security**: Linkability tags prevent theft
-- ✅ **Rate Limiting**: 5 attempts/hour (brute force protection)
+- ✅ **Rate Limiting**: 5 attempts/hour (generic errors prevent enumeration)
 - ✅ **Device Revocation**: Block stolen devices instantly
 - ✅ **Production Ready**: Docker, systemd, monitoring included
 
