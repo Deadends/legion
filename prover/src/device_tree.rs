@@ -103,12 +103,14 @@ impl DeviceTree {
 /// Global device tree manager (indexed by nullifier hash)
 pub struct DeviceTreeManager {
     trees: Arc<RwLock<HashMap<String, DeviceTree>>>,
+    revoked_devices: Arc<RwLock<HashMap<String, Vec<Fp>>>>,  // nullifier_hash -> [revoked_commitments]
 }
 
 impl DeviceTreeManager {
     pub fn new() -> Self {
         Self {
             trees: Arc::new(RwLock::new(HashMap::new())),
+            revoked_devices: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -159,6 +161,42 @@ impl DeviceTreeManager {
         trees
             .get(nullifier_hash)
             .map(|t| t.device_count())
+            .unwrap_or(0)
+    }
+
+    /// Revoke device for user
+    pub fn revoke_device(
+        &self,
+        nullifier_hash: &str,
+        device_commitment: Fp,
+    ) -> Result<()> {
+        let mut revoked = self.revoked_devices.write().unwrap();
+        revoked
+            .entry(nullifier_hash.to_string())
+            .or_insert_with(Vec::new)
+            .push(device_commitment);
+        Ok(())
+    }
+
+    /// Check if device is revoked
+    pub fn is_device_revoked(
+        &self,
+        nullifier_hash: &str,
+        device_commitment: Fp,
+    ) -> bool {
+        let revoked = self.revoked_devices.read().unwrap();
+        revoked
+            .get(nullifier_hash)
+            .map(|list| list.contains(&device_commitment))
+            .unwrap_or(false)
+    }
+
+    /// Get revoked device count for user
+    pub fn get_revoked_count(&self, nullifier_hash: &str) -> usize {
+        let revoked = self.revoked_devices.read().unwrap();
+        revoked
+            .get(nullifier_hash)
+            .map(|list| list.len())
             .unwrap_or(0)
     }
 }

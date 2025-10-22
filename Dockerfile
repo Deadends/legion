@@ -18,9 +18,11 @@ COPY verifier ./verifier
 COPY prover ./prover
 COPY legion-server ./legion-server
 
-# Build release binary
+# Build release binary with optimizations
 WORKDIR /build/legion-server
-RUN cargo build --release --features redis
+ENV CARGO_PROFILE_RELEASE_LTO=thin
+ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+RUN cargo build --release --features redis --jobs 2
 
 # Production image
 FROM debian:bookworm-slim

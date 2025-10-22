@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![Security](https://img.shields.io/badge/security-2%5E--128-green.svg)](SECURITY.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](SECURITY_FIXES.md)
 
 ## 🎯 What is Legion?
 
@@ -18,9 +19,11 @@ Legion is a production-ready zero-knowledge authentication system that proves yo
 - ✅ **Hardware Security**: WebAuthn TPM/Secure Enclave binding
 - ✅ **Replay Protection**: Nullifiers + timestamps
 - ✅ **Session Security**: Linkability tags prevent theft
+- ✅ **Rate Limiting**: 5 attempts/hour (brute force protection)
+- ✅ **Device Revocation**: Block stolen devices instantly
 - ✅ **Production Ready**: Docker, systemd, monitoring included
 
-## 🔒 Security Guarantees
+## 🔒 Security Guarantees (v1.1.0)
 
 | Property | Guarantee |
 |----------|-----------|
@@ -30,6 +33,8 @@ Legion is a production-ready zero-knowledge authentication system that proves yo
 | Proof System | Halo2 PLONK |
 | Password Hashing | Argon2id |
 | Hardware Binding | WebAuthn Level 2 |
+| Rate Limiting | 5 attempts/hour |
+| Device Revocation | Instant blacklist |
 
 ## 🚀 Quick Start (One Command!)
 
@@ -183,9 +188,11 @@ python3 -m http.server 8000
        │ 1. Hash credentials (Blake3 + Argon2id)                      │
        │    credential_hash = Blake3(username) || Argon2id(password)  │
        │                                                              │
-       │ 2. Request Merkle path + challenge                      ────►│
+       │ 2. Request Merkle path + challenge (tree_index)         ────►│
+       │    → Sends position number (e.g., 42), NOT credentials      │
+       │    → Server cannot identify which user (TRUE ZERO-KNOWLEDGE)│
        │                                                         ◄────│ {merkle_path, challenge,
-       │                                                              │  device_merkle_root}
+       │                                                              │  position}
        │                                                              │
        │ 3. Generate WebAuthn key (TPM/Secure Enclave)                │
        │    → device_pubkey (hardware-bound, ECDSA P-256)             │
@@ -210,7 +217,9 @@ python3 -m http.server 8000
        │                                                              │
        │ 7. Submit proof                                         ────►│
        │    {proof, public_inputs, linkability_tag}                   │
-       │                                                              │ • Verify timestamp (±5min)
+       │                                                              │ • Check device not revoked (NEW)
+       │                                                              │ • Verify timestamp (±10min)
+       │                                                              │ • Rate limit check (5/hour) (NEW)
        │                                                              │ • Check nullifier (replay?)
        │                                                              │ • Verify ZK proof (~10ms)
        │                                                              │ • Validate challenge
@@ -315,13 +324,15 @@ python3 -m http.server 8000
 - ✅ Someone in anonymity set authenticated
 - ✅ Proof is cryptographically valid
 - ✅ Same user+device via linkability tag
+- ✅ Rate limit status (attempts remaining)
+- ✅ Device revocation status
 
 ### What Server CANNOT Know
 - ❌ Which specific user (1 of 1M)
 - ❌ Which specific device (1 of 1K)
 - ❌ Username or password
 - ❌ Device private key
-- ❌ Merkle tree position
+- ❌ Merkle tree position (uses tree_index for true ZK)
 
 ## 📦 Deployment
 
@@ -364,6 +375,7 @@ cargo bench
 ## 📚 Documentation
 
 - [Architecture Flow](docs/ARCHITECTURE_FLOW.md) - Detailed authentication flow
+- [Security Fixes](SECURITY_FIXES.md) - v1.1.0 security improvements
 - [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
 - [Security Policy](docs/SECURITY.md) - Security guarantees and reporting
 - [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
@@ -397,6 +409,25 @@ Found a security issue? See [SECURITY.md](docs/SECURITY.md) for responsible disc
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🔄 Changelog
+
+### v1.1.0 - Security Hardening (2024)
+
+**Added**:
+- ✅ True zero-knowledge authentication using `tree_index`
+- ✅ Rate limiting (5 attempts/hour per credential)
+- ✅ Device revocation API and enforcement
+- ✅ Backward compatibility for old clients
+
+**Security Fixes**:
+- 🔒 Fixed identity leakage in challenge requests
+- 🔒 Prevented brute force attacks with rate limiting
+- 🔒 Enabled stolen device mitigation via revocation
+
+**See [SECURITY_FIXES.md](SECURITY_FIXES.md) for complete details.**
+
+---
 
 ## 🙏 Acknowledgments
 

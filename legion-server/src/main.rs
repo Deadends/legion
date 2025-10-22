@@ -31,6 +31,7 @@ struct RegisterResponse {
     success: bool,
     message: String,
     anonymity_set_size: Option<usize>,
+    tree_index: Option<usize>,  // NEW: Client stores this locally for zero-knowledge
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +65,9 @@ struct BlindRegisterResponse {
 
 #[derive(Debug, Deserialize)]
 struct MerklePathRequest {
-    user_leaf: String,
+    #[serde(default)]
+    user_leaf: String,  // DEPRECATED: Leaks identity
+    tree_index: Option<usize>,  // NEW: True zero-knowledge
 }
 
 #[derive(Debug, Serialize)]
@@ -116,6 +119,18 @@ struct GetDeviceProofRequest {
     device_position: usize,
 }
 
+#[derive(Debug, Deserialize)]
+struct RevokeDeviceRequest {
+    nullifier_hash: String,
+    device_commitment: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RevokeDeviceResponse {
+    success: bool,
+    error: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct GetDeviceProofResponse {
     success: bool,
@@ -141,13 +156,14 @@ async fn register_user(
     );
     
     match result {
-        Ok(_) => {
+        Ok(tree_index) => {
             let size = state.protocol.get_anonymity_set_size();
-            info!("User registered successfully. Anonymity set size: {}", size);
+            info!("User registered at index {} successfully. Anonymity set size: {}", tree_index, size);
             Ok(ResponseJson(RegisterResponse {
                 success: true,
-                message: format!("User registered successfully. Anonymity set size: {}", size),
+                message: format!("User registered successfully. Store tree_index={} locally.", tree_index),
                 anonymity_set_size: Some(size),
+                tree_index: Some(tree_index),
             }))
         }
         Err(e) => {
@@ -156,6 +172,7 @@ async fn register_user(
                 success: false,
                 message: format!("Registration failed: {}", e),
                 anonymity_set_size: None,
+                tree_index: None,
             }))
         }
     }
@@ -233,11 +250,11 @@ async fn register_blind(
     let result = state.protocol.register_blind_leaf(&request.user_leaf);
     
     match result {
-        Ok(_) => {
-            info!("Blind registration successful");
+        Ok(tree_index) => {
+            info!("Blind registration successful at index {}", tree_index);
             Ok(ResponseJson(BlindRegisterResponse {
                 success: true,
-                user_leaf: request.user_leaf,
+                user_leaf: format!("tree_index={}", tree_index),  // Return index instead of leaf
                 error: None,
             }))
         }
@@ -256,29 +273,59 @@ async fn get_merkle_path(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     Json(request): Json<MerklePathRequest>,
 ) -> Result<ResponseJson<MerklePathResponse>, StatusCode> {
-    info!("Merkle path request for leaf: {}", request.user_leaf);
-    
-    let result = state.protocol.get_merkle_path_for_leaf(&request.user_leaf);
-    
-    match result {
-        Ok((path, root, position)) => {
-            let challenge = hex::encode(state.protocol.generate_challenge());
-            info!("Merkle path generated for position {}", position);
-            Ok(ResponseJson(MerklePathResponse {
-                merkle_path: path,
-                merkle_root: root,
-                challenge,
-                position,
-            }))
+    // TRUE ZERO-KNOWLEDGE: Use tree_index if provided, fallback to old method
+    if let Some(tree_index) = request.tree_index {
+        info!("Merkle path request for tree_index: {} (zero-knowledge)", tree_index);
+        
+        let result = state.protocol.get_merkle_path_by_index(tree_index);
+        
+        match result {
+            Ok((path, root)) => {
+                let challenge = hex::encode(state.protocol.generate_challenge());
+                info!("Merkle path generated for index {} (server doesn't know identity)", tree_index);
+                Ok(ResponseJson(MerklePathResponse {
+                    merkle_path: path,
+                    merkle_root: root,
+                    challenge,
+                    position: tree_index,
+                }))
+            }
+            Err(e) => {
+                error!("Merkle path generation failed: {}", e);
+                Ok(ResponseJson(MerklePathResponse {
+                    merkle_path: vec![],
+                    merkle_root: String::new(),
+                    challenge: String::new(),
+                    position: 0,
+                }))
+            }
         }
-        Err(e) => {
-            error!("Merkle path generation failed: {}", e);
-            Ok(ResponseJson(MerklePathResponse {
-                merkle_path: vec![],
-                merkle_root: String::new(),
-                challenge: String::new(),
-                position: 0,
-            }))
+    } else {
+        // DEPRECATED: Old method that leaks identity
+        info!("⚠️  Merkle path request using DEPRECATED user_leaf (leaks identity)");
+        
+        let result = state.protocol.get_merkle_path_for_leaf(&request.user_leaf);
+        
+        match result {
+            Ok((path, root, position)) => {
+                let challenge = hex::encode(state.protocol.generate_challenge());
+                info!("Merkle path generated for position {}", position);
+                Ok(ResponseJson(MerklePathResponse {
+                    merkle_path: path,
+                    merkle_root: root,
+                    challenge,
+                    position,
+                }))
+            }
+            Err(e) => {
+                error!("Merkle path generation failed: {}", e);
+                Ok(ResponseJson(MerklePathResponse {
+                    merkle_path: vec![],
+                    merkle_root: String::new(),
+                    challenge: String::new(),
+                    position: 0,
+                }))
+            }
         }
     }
 }
@@ -389,6 +436,35 @@ async fn verify_anonymous_proof(
 }
 
 
+
+async fn revoke_device(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    Json(request): Json<RevokeDeviceRequest>,
+) -> Result<ResponseJson<RevokeDeviceResponse>, StatusCode> {
+    info!("Device revocation request for nullifier: {}...", &request.nullifier_hash[..16]);
+    
+    let result = state.protocol.revoke_device(
+        &request.nullifier_hash,
+        &request.device_commitment,
+    );
+    
+    match result {
+        Ok(_) => {
+            info!("Device revoked successfully");
+            Ok(ResponseJson(RevokeDeviceResponse {
+                success: true,
+                error: None,
+            }))
+        }
+        Err(e) => {
+            error!("Device revocation failed: {}", e);
+            Ok(ResponseJson(RevokeDeviceResponse {
+                success: false,
+                error: Some(e.to_string()),
+            }))
+        }
+    }
+}
 
 async fn health_check() -> &'static str {
     "Legion Server - Healthy"
@@ -547,6 +623,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/verify-anonymous-proof", post(verify_anonymous_proof))
         .route("/api/register-device", post(register_device))
         .route("/api/get-device-proof", post(get_device_proof))
+        .route("/api/revoke-device", post(revoke_device))
         .route("/api/webauthn/register/start", post(start_webauthn_registration))
         .route("/api/webauthn/register/finish", post(finish_webauthn_registration))
         .route("/api/webauthn/auth/start", post(start_webauthn_authentication))
@@ -568,6 +645,7 @@ async fn main() -> anyhow::Result<()> {
     info!("   POST /api/verify-anonymous-proof - Verify ZK proof");
     info!("   POST /api/register-device - Register device (ring signature)");
     info!("   POST /api/get-device-proof - Get device Merkle proof");
+    info!("   POST /api/revoke-device - Revoke stolen device");
     info!("   POST /api/webauthn/register/start - Start WebAuthn registration");
     info!("   POST /api/webauthn/register/finish - Finish WebAuthn registration");
     info!("   POST /api/webauthn/auth/start - Start WebAuthn authentication");

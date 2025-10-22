@@ -207,15 +207,18 @@ impl AuthenticationProtocol {
     }
 
     /// Register user with pre-computed leaf (for HTTP API)
-    pub fn register_user_with_leaf(&self, user_leaf: Fp) -> Result<()> {
+    /// Returns tree_index for client to store locally (zero-knowledge)
+    pub fn register_user_with_leaf(&self, user_leaf: Fp) -> Result<usize> {
         let mut tree = self.anonymity_tree.write().unwrap();
 
         // NO duplicate check - linkability tags make users unique
         // Multiple users can share same credentials but have different devices
 
         tree.add_leaf(user_leaf)?;
+        let tree_index = tree.get_anonymity_set_size() - 1;
         println!(
-            "➕ User registered. Anonymity set size: {}",
+            "➕ User registered at index {}. Anonymity set size: {}",
+            tree_index,
             tree.get_anonymity_set_size()
         );
 
@@ -225,11 +228,12 @@ impl AuthenticationProtocol {
             cache.set_merkle_root(tree.get_root())?;
         }
 
-        Ok(())
+        Ok(tree_index)
     }
 
     /// Register blind leaf (client-side hashing)
-    pub fn register_blind_leaf(&self, user_leaf_hex: &str) -> Result<()> {
+    /// Returns tree_index for client to store locally (zero-knowledge)
+    pub fn register_blind_leaf(&self, user_leaf_hex: &str) -> Result<usize> {
         let leaf_bytes = hex::decode(user_leaf_hex).map_err(|_| anyhow!("Invalid hex string"))?;
         let mut repr = [0u8; 32];
         repr.copy_from_slice(&leaf_bytes);
@@ -239,7 +243,29 @@ impl AuthenticationProtocol {
         self.register_user_with_leaf(user_leaf)
     }
 
-    /// Get Merkle path for a leaf (for ZK proof generation)
+    /// TRUE ZERO-KNOWLEDGE: Get Merkle path by tree index (server never sees credentials)
+    pub fn get_merkle_path_by_index(
+        &self,
+        tree_index: usize,
+    ) -> Result<(Vec<String>, String)> {
+        let tree = self.anonymity_tree.read().unwrap();
+        
+        if tree_index >= tree.get_anonymity_set_size() {
+            return Err(anyhow!("Invalid tree index"));
+        }
+
+        let (path, _) = tree.get_proof(tree_index)?;
+        let path_hex: Vec<String> = path
+            .iter()
+            .map(|node| hex::encode(node.to_repr()))
+            .collect();
+
+        let root_hex = hex::encode(tree.get_root().to_repr());
+
+        Ok((path_hex, root_hex))
+    }
+
+    /// DEPRECATED: Old method that leaks identity - kept for backward compatibility
     pub fn get_merkle_path_for_leaf(
         &self,
         user_leaf_hex: &str,
@@ -332,6 +358,12 @@ impl AuthenticationProtocol {
         let expiration_time = Self::hex_to_fp(expiration_time_hex)?;
         let linkability_tag = Self::hex_to_fp(linkability_tag_hex)?; // CHANGED
 
+        // DEVICE REVOCATION CHECK
+        let nullifier_hash = hex::encode(blake3::hash(&nullifier.to_repr()).as_bytes());
+        if self.device_tree_manager.is_device_revoked(&nullifier_hash, client_pubkey) {
+            return Err(anyhow!("Device has been revoked"));
+        }
+
         // CRITICAL: Validate timestamp (prevent future/past attacks)
         // Allow longer window for k=16 (4 min proof) and k=18 (15 min proof)
         let timestamp_bytes = timestamp.to_repr();
@@ -394,6 +426,10 @@ impl AuthenticationProtocol {
 
         // Check nullifier
         let nullifier_bytes: [u8; 32] = *blake3::hash(&nullifier.to_repr()).as_bytes();
+        
+        // RATE LIMITING: Check attempts before nullifier check
+        self.check_rate_limit(&nullifier_bytes)?;
+        
         if self.check_nullifier_exists(nullifier_bytes)? {
             return Err(anyhow!("Nullifier already used"));
         }
@@ -465,7 +501,8 @@ impl AuthenticationProtocol {
     }
 
     /// Register user in persistent anonymity set
-    pub fn register_user(&self, username: &[u8], password: &[u8]) -> Result<()> {
+    /// Returns tree_index for client to store locally (zero-knowledge)
+    pub fn register_user(&self, username: &[u8], password: &[u8]) -> Result<usize> {
         // Step 1: Hash username with Blake3
         let username_hash = AuthCircuit::hash_credential(username, b"USERNAME")?;
 
@@ -485,8 +522,10 @@ impl AuthenticationProtocol {
         // Multiple users can share same credentials but have different devices
 
         tree.add_leaf(user_leaf)?;
+        let tree_index = tree.get_anonymity_set_size() - 1;
         println!(
-            "➕ User registered. Anonymity set size: {}",
+            "➕ User registered at index {}. Anonymity set size: {}",
+            tree_index,
             tree.get_anonymity_set_size()
         );
 
@@ -496,7 +535,7 @@ impl AuthenticationProtocol {
             cache.set_merkle_root(tree.get_root())?;
         }
 
-        Ok(())
+        Ok(tree_index)
     }
 
     #[cfg(not(feature = "redis"))]
@@ -651,34 +690,26 @@ impl AuthenticationProtocol {
         OracleVerifier::new(&pubkey)
     }
 
-    fn validate_request(&self, request: &AuthenticationRequest) -> Result<()> {
-        if request.username.is_empty() {
-            return Err(anyhow!("Username cannot be empty"));
-        }
-        if request.password.is_empty() {
-            return Err(anyhow!("Password cannot be empty"));
-        }
-        if request.username.len() > 256 || request.password.len() > 256 {
-            return Err(anyhow!("Credentials too long"));
+    /// RATE LIMITING: Check authentication attempts
+    fn check_rate_limit(&self, nullifier_hash: &[u8; 32]) -> Result<()> {
+        #[cfg(feature = "redis")]
+        {
+            if let Ok(mut conn) = self.get_redis_connection() {
+                use redis::Commands;
+                let key = format!("legion:ratelimit:{}", hex::encode(nullifier_hash));
+                let count: i64 = conn.incr(&key, 1)?;
+                
+                if count == 1 {
+                    // Set 1 hour expiry on first attempt
+                    let _: () = conn.expire(&key, 3600)?;
+                }
+                
+                if count > 5 {
+                    return Err(anyhow!("Rate limit exceeded: max 5 attempts per hour"));
+                }
+            }
         }
         Ok(())
-    }
-
-    fn compute_nullifier_hash(&self, username: &[u8], password: &[u8]) -> Result<[u8; 32]> {
-        // Use same hashing as authentication for consistency
-        let username_hash = AuthCircuit::hash_credential(username, b"USERNAME")?;
-        let argon2_password = AuthCircuit::argon2_hash_password(password, username)?;
-        let password_hash = AuthCircuit::hash_credential(&argon2_password, b"PASSWORD")?;
-
-        // ✅ FIXED: Deterministic nullifier (no timestamp)
-        // Same username+password always produces same nullifier
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"NULLIFIER_V3_ARGON2");
-        hasher.update(&username_hash.to_repr());
-        hasher.update(&password_hash.to_repr());
-        // NO TIMESTAMP - prevents multiple logins with same credentials
-
-        Ok(*hasher.finalize().as_bytes())
     }
 
     fn check_nullifier_exists(&self, nullifier_hash: [u8; 32]) -> Result<bool> {
@@ -761,40 +792,24 @@ impl AuthenticationProtocol {
         Ok(client.get_connection()?)
     }
 
-    /// ✅ FIXED: Audit logging for security monitoring
-    fn log_authentication_attempt(
+    /// Revoke device (instant blacklist)
+    pub fn revoke_device(
         &self,
-        request: &AuthenticationRequest,
-        success: bool,
-        proof_size: Option<usize>,
-        duration: std::time::Duration,
+        nullifier_hash: &str,
+        device_commitment_hex: &str,
     ) -> Result<()> {
-        let username_hash = AuthCircuit::hash_credential(&request.username, b"USERNAME")?;
-        let log_entry = serde_json::json!({
-            "timestamp": get_timestamp(),
-            "event": "authentication_attempt",
-            "username_hash": hex::encode(username_hash.to_repr()),
-            "success": success,
-            "proof_size": proof_size,
-            "duration_ms": duration.as_millis(),
-            "security_level": format!("{:?}", request.security_level),
-        });
-
-        println!("📝 Audit: {}", log_entry);
-
+        let device_commitment = Self::hex_to_fp(device_commitment_hex)?;
+        self.device_tree_manager.revoke_device(nullifier_hash, device_commitment)?;
+        
         #[cfg(feature = "redis")]
         {
             if let Ok(mut conn) = self.get_redis_connection() {
-                let log_key = format!("legion:audit:{}", get_timestamp());
-                let _: () = redis::cmd("SETEX")
-                    .arg(log_key)
-                    .arg(2592000) // 30 days
-                    .arg(log_entry.to_string())
-                    .query(&mut conn)
-                    .unwrap_or(());
+                use redis::Commands;
+                let key = format!("legion:revoked:{}:{}", nullifier_hash, device_commitment_hex);
+                let _: () = conn.set_ex(&key, "1", 31536000)?; // 1 year cache
             }
         }
-
+        
         Ok(())
     }
 }

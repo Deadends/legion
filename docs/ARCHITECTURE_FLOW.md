@@ -48,10 +48,11 @@ This document provides a detailed, step-by-step visualization of how Legion impl
                                  │
     ╔════════════════════════════════════════════════════════════╗
     ║  STEP 2: REQUEST MERKLE PATH (Client → Server)             ║
+    ║  🔒 TRUE ZERO-KNOWLEDGE: Uses tree_index, NOT credentials  ║
     ╚════════════════════════════════════════════════════════════╝
                                  │
                                  ▼
-         POST /auth/challenge {username_hash}
+         POST /api/get-merkle-path {tree_index: 42}
                                  │
                                  │ HTTPS/TLS 1.3
                                  │
@@ -59,18 +60,15 @@ This document provides a detailed, step-by-step visualization of how Legion impl
 │                          SERVER (Rust/Axum)                             │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │ 1. Lookup user in Merkle tree (2^20 capacity)                    │   │
-│  │    → Find leaf position for username_hash                        │   │
+│  │ 1. Get Merkle path by position (2^20 capacity)                   │   │
+│  │    → Input: tree_index = 42 (just a number!)                     │   │
 │  │    → Extract authentication path (20 siblings)                   │   │
+│  │    → Server CANNOT identify which user (TRUE ZK!)                │   │
 │  │                                                                  │   │
 │  │ 2. Generate random challenge                                     │   │
 │  │    → challenge = random_bytes(32)                                │   │
 │  │    → Store in Redis with 5-minute TTL                            │   │
-│  │    → Key: username_hash → Value: challenge                       │   │
-│  │                                                                  │   │
-│  │ 3. Fetch device tree root                                        │   │
-│  │    → device_merkle_root (2^10 devices per user)                  │   │
-│  │    → Initially empty for new users                               │   │
+│  │    → Key: challenge_id → Value: challenge                        │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
@@ -80,7 +78,7 @@ This document provides a detailed, step-by-step visualization of how Legion impl
            merkle_path: [sibling_0, ..., sibling_19],
            merkle_root: root_hash,
            challenge: random_32_bytes,
-           device_merkle_root: device_root
+           position: 42
          }
                                  │
                                  │ HTTPS/TLS 1.3
@@ -274,33 +272,43 @@ This document provides a detailed, step-by-step visualization of how Legion impl
 │  │ VERIFICATION STEPS (All Must Pass)                               │  │
 │  │ ═════════════════════════════════════                            │  │
 │  │                                                                  │  │
-│  │ 1. Timestamp Validation                                          │  │
-│  │    ✓ |proof_timestamp - server_time| < 5 minutes                 │  │
+│  │ 1. Device Revocation Check (NEW v1.1.0)                          │  │
+│  │    ✓ Check if device_commitment is revoked                       │  │
+│  │    ✗ If YES: REJECT (stolen device blocked)                      │  │
+│  │    ✓ If NO: Continue verification                                │  │
+│  │                                                                  │  │
+│  │ 2. Timestamp Validation                                          │  │
+│  │    ✓ |proof_timestamp - server_time| < 10 minutes                │  │
 │  │    ✗ Reject if too old (replay protection)                       │  │
 │  │                                                                  │  │
-│  │ 2. Challenge Verification                                        │  │
-│  │    ✓ Lookup challenge in Redis by username_hash                  │  │
+│  │ 3. Challenge Verification                                        │  │
+│  │    ✓ Lookup challenge in Redis                                   │  │
 │  │    ✓ Verify challenge matches proof's public input               │  │
 │  │    ✓ Delete challenge (one-time use)                             │  │
 │  │    ✗ Reject if challenge not found or mismatched                 │  │
 │  │                                                                  │  │
-│  │ 3. Nullifier Check (Replay Protection)                           │  │
+│  │ 4. Rate Limiting (NEW v1.1.0)                                    │  │
+│  │    ✓ Check attempts for this nullifier                           │  │
+│  │    ✓ Increment counter in Redis                                  │  │
+│  │    ✗ If > 5 attempts/hour: REJECT (brute force protection)       │  │
+│  │                                                                  │  │
+│  │ 5. Nullifier Check (Replay Protection)                           │  │
 │  │    ✓ Query RocksDB: Has nullifier been used?                     │  │
 │  │    ✗ If YES: REJECT (replay attack)                              │  │
 │  │    ✓ If NO: Continue verification                                │  │
 │  │                                                                  │  │
-│  │ 4. Merkle Root Validation                                        │  │
+│  │ 6. Merkle Root Validation                                        │  │
 │  │    ✓ Verify merkle_root matches current tree root                │  │
 │  │    ✓ Verify device_merkle_root matches user's device tree        │  │
 │  │    ✗ Reject if roots don't match                                 │  │
 │  │                                                                  │  │
-│  │ 5. ZK Proof Verification (Halo2)                                 │  │
+│  │ 7. ZK Proof Verification (Halo2)                                 │  │
 │  │    ✓ Verify proof against public inputs                          │  │
 │  │    ✓ Check all circuit constraints satisfied                     │  │
 │  │    ✓ Verification time: ~10ms                                    │  │
 │  │    ✗ Reject if proof invalid                                     │  │
 │  │                                                                  │  │
-│  │ 6. Mark Nullifier as Used                                        │  │
+│  │ 8. Mark Nullifier as Used                                        │  │
 │  │    ✓ Store nullifier in RocksDB (permanent)                      │  │
 │  │    ✓ Cache in Redis (fast lookup)                                │  │
 │  │    ✓ Prevents future replay of this proof                        │  │
@@ -518,6 +526,9 @@ Scenario: Attacker steals session_token
 |-------------|-------------------|--------|
 | Replay Attack | Nullifier tracking | ❌ Rejected |
 | Session Theft | Linkability tag binding | ❌ Rejected |
+| Brute Force | Rate limiting (5/hour) | ❌ Blocked (NEW v1.1.0) |
+| Stolen Device | Device revocation API | ❌ Blocked (NEW v1.1.0) |
+| Identity Leakage | tree_index (not credentials) | ❌ Prevented (NEW v1.1.0) |
 | Credential Stuffing | Argon2id + rate limiting | ❌ Mitigated |
 | Timing Attack | Constant-time circuit ops | ❌ No leakage |
 | Proof Forgery | Halo2 soundness (2^-128) | ❌ Infeasible |

@@ -214,12 +214,24 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
     let client_pubkey_fp = device_commitment_fp;
     
     console_log!("\n[Step 3/8] 🌳 Requesting Merkle path from server...");
-    console_log!("  → Sending user leaf hash (server never sees credentials)");
+    
+    // TRUE ZERO-KNOWLEDGE: Use tree_index if available
+    let tree_index = storage.get_item("legion_tree_index")
+        .map_err(|_| JsValue::from_str("Storage read failed"))?
+        .and_then(|s| s.parse::<usize>().ok());
     
     let path_url = format!("{}/api/get-merkle-path", server_url);
-    let path_body = serde_json::json!({
-        "user_leaf": hex::encode(user_leaf.to_repr())
-    });
+    let path_body = if let Some(idx) = tree_index {
+        console_log!("  ✓ Using tree_index={} (zero-knowledge - server doesn't know identity)", idx);
+        serde_json::json!({
+            "tree_index": idx
+        })
+    } else {
+        console_log!("  ⚠️  No tree_index found - using DEPRECATED user_leaf (leaks identity)");
+        serde_json::json!({
+            "user_leaf": hex::encode(user_leaf.to_repr())
+        })
+    };
     
     let mut opts = RequestInit::new();
     opts.set_method("POST");
@@ -658,6 +670,7 @@ pub async fn register_user(username: String, password: String, server_url: Strin
         .hash([username_hash, password_hash]);
     
     console_log!("Sending only leaf hash to server (blind registration)");
+    console_log!("Server will return tree_index for zero-knowledge authentication");
     
     let url = format!("{}/api/register-blind", server_url);
     let body = serde_json::json!({
@@ -687,6 +700,27 @@ pub async fn register_user(username: String, password: String, server_url: Strin
     let json = wasm_bindgen_futures::JsFuture::from(
         resp.json().map_err(|e| JsValue::from_str(&format!("JSON failed: {:?}", e)))?
     ).await.map_err(|e| JsValue::from_str(&format!("JSON future failed: {:?}", e)))?;
+    
+    // Extract and store tree_index for zero-knowledge
+    #[derive(Deserialize)]
+    struct RegResponse {
+        success: bool,
+        user_leaf: String,
+    }
+    
+    if let Ok(reg_resp) = serde_wasm_bindgen::from_value::<RegResponse>(json.clone()) {
+        if reg_resp.success && reg_resp.user_leaf.starts_with("tree_index=") {
+            if let Some(idx_str) = reg_resp.user_leaf.strip_prefix("tree_index=") {
+                let window = web_sys::window().ok_or("No window")?;
+                let storage = window.local_storage()
+                    .map_err(|_| JsValue::from_str("No localStorage"))?
+                    .ok_or("No localStorage")?;
+                storage.set_item("legion_tree_index", idx_str)
+                    .map_err(|_| JsValue::from_str("Failed to store tree_index"))?;
+                console_log!("✓ Stored tree_index={} for zero-knowledge authentication", idx_str);
+            }
+        }
+    }
     
     Ok(json)
 }
