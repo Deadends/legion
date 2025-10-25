@@ -285,6 +285,11 @@ struct AnonymousProofRequest {
     nullifier: String,
     challenge: String,
     client_pubkey: String,
+    timestamp: String,
+    device_merkle_root: String,
+    session_token: String,
+    expiration_time: String,
+    linkability_tag: String,
 }
 
 async fn verify_anonymous_proof(
@@ -445,30 +450,27 @@ async fn verify_anonymous_proof(
         poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<2>, 3, 2>::init()
             .hash([nullifier, client_pubkey]);
 
-    // Verify proof with 6 public inputs
+    // Use the new verify_anonymous_proof method that returns (session_token, user_data_id)
     let protocol = service.get_protocol();
-    let public_inputs = vec![
-        merkle_root,
-        nullifier,
-        challenge,
-        client_pubkey,
-        expected_challenge_binding,
-        expected_pubkey_binding,
-    ];
-    let auth_context = crate::AuthContext {
-        challenge_hash: [0u8; 32],
-        session_id: [0u8; 16],
-        auth_level: 1,
-        timestamp: crate::get_timestamp(),
-    };
-
-    match protocol.verify_proof(&proof, &public_inputs, &auth_context) {
-        Ok(true) => {
+    
+    match protocol.verify_anonymous_proof(
+        &req.proof,
+        &req.merkle_root,
+        &req.nullifier,
+        &req.challenge,
+        &req.client_pubkey,
+        &req.timestamp,
+        &req.device_merkle_root,
+        &req.session_token,
+        &req.expiration_time,
+        &req.linkability_tag,
+    ) {
+        Ok((session_token, user_data_id)) => {
             let nullifier_hash = *blake3::hash(&nullifier_repr).as_bytes();
             let nullifier_hex = hex::encode(nullifier_hash);
 
-            // Session token now comes from proof (computed in circuit)
-            let session_id = hex::encode(nullifier_hash);
+            // Session token comes from the new method
+            let session_id = session_token;
 
             // Bind session to WebAuthn credential (if available)
             #[cfg(feature = "webauthn")]
@@ -522,7 +524,8 @@ async fn verify_anonymous_proof(
 
             let mut response = serde_json::json!({
                 "success": true,
-                "session_id": session_id,
+                "session_token": session_id,
+                "user_data_id": user_data_id,
                 "message": "ZK proof verified",
                 "proof_size": proof.len()
             });
