@@ -645,7 +645,52 @@ services:
 - Circuit correctness proofs
 - Side-channel resistance verification
 
-### 11.4 Standardization Efforts
+### 11.4 Post-Quantum Cryptography
+
+**ML-KEM Integration**:
+- Replace WebAuthn ECDSA with ML-KEM-768/1024 for quantum resistance
+- Hybrid classical-quantum device key generation
+- Post-quantum secure device commitment schemes
+- Backward compatibility with existing WebAuthn devices
+
+**Quantum-Resistant Hash Functions**:
+- Evaluate post-quantum secure alternatives to Poseidon
+- Quantum-resistant Merkle tree constructions
+- Long-term security against quantum adversaries
+
+### 11.5 Nullifier Rotation and Zero-Knowledge Session Refresh
+
+**Zero-Knowledge Refresh Proofs**:
+- Lightweight ZK proofs for session extension without full re-authentication
+- Prove knowledge of previous nullifier without revealing it
+- Significantly faster than full authentication proofs (~1s vs ~4min)
+- Maintains zero-knowledge properties throughout session lifecycle
+
+**Hierarchical Nullifier Chains**:
+- Parent nullifier for initial authentication
+- Child nullifiers derived for session extensions
+- Each refresh generates new nullifier from previous one
+- Revocation of entire nullifier chains for security
+
+**Implementation Strategy**:
+```
+// Initial authentication
+parent_nullifier = Poseidon(credential_hash || challenge)
+
+// Session refresh (lightweight ZK proof)
+child_nullifier_n = Poseidon(parent_nullifier || counter_n)
+refresh_proof = ZK_Prove("I know parent_nullifier such that child_nullifier_n = Poseidon(parent_nullifier || counter_n)")
+
+// No credential re-hashing or Merkle path verification needed
+```
+
+**Benefits**:
+- 240x faster than full authentication (1s vs 4min)
+- Maintains anonymity (server cannot link refresh to original auth)
+- Prevents session theft (requires knowledge of parent nullifier)
+- Reduces client computational burden for active users
+
+### 11.6 Standardization Efforts
 
 **Web Standards Integration**:
 - W3C WebAuthn Level 3 contributions
