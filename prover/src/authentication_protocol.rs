@@ -42,6 +42,7 @@ pub struct AuthenticationResult {
     pub proof_size: Option<usize>,
     pub session_token: Option<[u8; 32]>,
     pub nullifier: Option<[u8; 32]>,
+    pub user_data_id: Option<String>,
     pub error: Option<String>,
 }
 
@@ -343,7 +344,7 @@ impl AuthenticationProtocol {
         session_token_hex: &str,
         expiration_time_hex: &str,
         linkability_tag_hex: &str, // CHANGED from device_commitment_hex
-    ) -> Result<String> {
+    ) -> Result<(String, String)> {
         // Decode proof
         let proof = hex::decode(proof_hex).map_err(|_| anyhow!("Invalid proof hex"))?;
 
@@ -452,6 +453,9 @@ impl AuthenticationProtocol {
         // Session token is already computed in circuit, just convert to hex
         let session_token_hex = hex::encode(session_token.to_repr());
 
+        // Generate user_data_id for persistent data (anonymous but consistent)
+        let user_data_id = hex::encode(blake3::hash(&nullifier.to_repr()).as_bytes());
+
         // Store session in Redis with TTL
         #[cfg(feature = "redis")]
         {
@@ -486,7 +490,7 @@ impl AuthenticationProtocol {
             }
         }
 
-        Ok(session_token_hex)
+        Ok((session_token_hex, user_data_id))
     }
 
     fn hex_to_fp(hex: &str) -> Result<Fp> {
@@ -551,6 +555,7 @@ impl AuthenticationProtocol {
             proof_size: None,
             session_token: None,
             nullifier: None,
+            user_data_id: None,
             error: Some(
                 "Server-side proving disabled. Use /api/verify-anonymous-proof".to_string(),
             ),
@@ -569,6 +574,7 @@ impl AuthenticationProtocol {
             proof_size: None,
             session_token: None,
             nullifier: None,
+            user_data_id: None,
             error: Some(
                 "Server-side proving disabled. Use /api/verify-anonymous-proof".to_string(),
             ),
@@ -925,8 +931,8 @@ mod tests {
             anonymity_required: true,
         };
         let alice_result = protocol.authenticate_fast(alice_request)?;
-        assert!(alice_result.success);
-        assert!(alice_result.proof.is_some());
+        assert!(!alice_result.success); // Server-side proving disabled
+        assert!(alice_result.proof.is_none());
 
         // Authenticate bob
         let bob_request = AuthenticationRequest {
@@ -936,11 +942,11 @@ mod tests {
             anonymity_required: true,
         };
         let bob_result = protocol.authenticate_fast(bob_request)?;
-        assert!(bob_result.success);
-        assert!(bob_result.proof.is_some());
+        assert!(!bob_result.success); // Server-side proving disabled
+        assert!(bob_result.proof.is_none());
 
-        // Both should have different nullifiers
-        assert_ne!(alice_result.nullifier, bob_result.nullifier);
+        // Both should have no nullifiers (server-side proving disabled)
+        assert_eq!(alice_result.nullifier, bob_result.nullifier);
 
         Ok(())
     }
