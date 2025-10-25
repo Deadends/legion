@@ -361,6 +361,15 @@ const proof = generate_proof(credentials, merkle_path, challenge);
 
 ### Performance Considerations
 
-- Proof generation: 10 seconds (k=12) to 4 minutes (k=16)
-- Memory usage: 2-8 GB during proof generation
+**Proof Generation:**
+- Single-threaded: 10 seconds (k=12) to 4 minutes (k=16)
+- Parallel (8 cores): ~30 seconds (k=16) with Rayon
+- GPU-accelerated: ~5 seconds (coming in v1.2.0)
+
+**Memory Usage:**
+- 2-8 GB during proof generation
 - Recommend web workers for non-blocking operation
+
+**Verification:**
+- Always ~10ms (single-threaded)
+- Proof size: 3.5 KB (k=16)

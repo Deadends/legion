@@ -208,6 +208,34 @@ session_token = Poseidon(nullifier, timestamp, linkability_tag)
 user_data_id = Blake3(nullifier)
 ```
 
+**Step 6: Authenticated Request Protocol**
+
+**Critical Security Property**: Every authenticated request to the server MUST include the challenge to prevent replay attacks and ensure request freshness.
+
+```
+// For each authenticated API call
+request_challenge = server.get_fresh_challenge()
+request_payload = {
+    session_token: session_token,
+    linkability_tag: linkability_tag,
+    challenge: request_challenge,
+    timestamp: current_timestamp()
+}
+```
+
+**Server Validation**:
+1. Verify challenge was issued by server and not expired (5-minute TTL)
+2. Verify session_token is valid and not expired
+3. Verify linkability_tag matches the session
+4. Verify timestamp is within acceptable window (±5 minutes)
+5. Mark challenge as consumed (one-time use)
+
+**Security Guarantees**:
+- Prevents replay attacks on authenticated requests
+- Ensures request freshness and temporal binding
+- Maintains zero-knowledge properties (challenge doesn't reveal identity)
+- Protects against man-in-the-middle attacks
+
 ### 4.4 Zero-Knowledge Circuit Constraints
 
 The authentication circuit enforces the following constraints:
@@ -495,6 +523,28 @@ struct Session {
 - `GET /api/session/validate`: Session validation with linkability check
 - `POST /api/device/register`: Hardware device registration
 - `POST /api/device/revoke`: Device revocation for security
+- `GET /api/challenge`: Generate fresh challenge for authenticated requests
+
+**Challenge-Response for Authenticated Requests**:
+
+All authenticated endpoints require a fresh challenge to prevent replay attacks:
+
+```javascript
+// 1. Request fresh challenge
+const { challenge } = await fetch('/api/challenge').then(r => r.json());
+
+// 2. Include challenge in authenticated request
+const response = await fetch('/api/protected-endpoint', {
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${session_token}`,
+        'X-Linkability-Tag': linkability_tag,
+        'X-Challenge': challenge,
+        'X-Timestamp': Date.now()
+    },
+    body: JSON.stringify(data)
+});
+```
 
 **WebSocket Support**:
 - Real-time session status updates
