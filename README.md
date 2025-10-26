@@ -22,7 +22,7 @@ You prove something based on public data without linking your current action bac
 - ✅ **Session Security**: Linkability tags prevent theft
 - ✅ **Rate Limiting**: 5 attempts/hour (generic errors prevent enumeration)
 - ✅ **Device Revocation**: Block stolen devices instantly
-- ✅ **Production Ready**: Docker, systemd, monitoring included
+- ✅ **Works**: Docker, systemd, monitoring included
 
 ## 🔒 Security Guarantees (v1.1.0)
 
