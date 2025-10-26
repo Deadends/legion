@@ -9,7 +9,7 @@
 
 ## 🎯 What is Legion?
 
-Legion is a production-ready zero-knowledge authentication system that proves you're authorized **without revealing who you are**. 
+Legion is a zero-knowledge authentication system that proves you're authorized **without revealing who you are**. 
 You prove something based on public data without linking your current action back to your public address. 
 
 ### Key Features
