@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+import http.server
+import socketserver
 
-class CORSRequestHandler(SimpleHTTPRequestHandler):
+PORT = 8000
+
+class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
         self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
         self.send_header('Cross-Origin-Resource-Policy', 'cross-origin')
         self.send_header('Access-Control-Allow-Origin', '*')
-        SimpleHTTPRequestHandler.end_headers(self)
+        super().end_headers()
 
-if __name__ == '__main__':
-    print('🚀 Serving on http://localhost:8000')
-    print('⚠️  COOP/COEP/CORP headers enabled for SharedArrayBuffer')
-    print('📝 Check crossOriginIsolated in browser console (should be true)')
-    HTTPServer(('', 8000), CORSRequestHandler).serve_forever()
+with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
+    print(f"Serving at http://localhost:{PORT}")
+    print("[INFO] COOP/COEP/CORP headers enabled for SharedArrayBuffer support")
+    print("[INFO] Verify crossOriginIsolated=true in browser console")
+    httpd.serve_forever()

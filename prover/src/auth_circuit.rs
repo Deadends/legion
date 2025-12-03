@@ -69,7 +69,9 @@ pub struct AuthCircuit {
     timestamp_raw: Fp,
     device_commitment_raw: Fp,
     device_merkle_root_raw: Fp,
-    linkability_tag_raw: Fp, // NEW: Raw linkability tag
+    linkability_tag_raw: Fp,
+    merkle_path_raw: [Fp; MERKLE_DEPTH],
+    leaf_index_raw: u64,
 }
 
 impl AuthCircuit {
@@ -89,14 +91,15 @@ impl AuthCircuit {
         device_merkle_root: Fp,
         linkability_tag: Fp, // NEW: Linkability tag parameter
     ) -> Result<Self> {
+        // TRUE ZERO-KNOWLEDGE: Nullifier includes challenge (one-time use)
         let nullifier = poseidon::Hash::<
             _,
             poseidon::P128Pow5T3,
-            poseidon::ConstantLength<2>,
+            poseidon::ConstantLength<3>,
             WIDTH,
             RATE,
         >::init()
-        .hash([username_hash, password_hash]);
+        .hash([username_hash, password_hash, challenge]);
 
         Ok(Self {
             username_hash: Value::known(username_hash),
@@ -124,7 +127,9 @@ impl AuthCircuit {
             timestamp_raw: timestamp,
             device_commitment_raw: device_commitment,
             device_merkle_root_raw: device_merkle_root,
-            linkability_tag_raw: linkability_tag, // NEW
+            linkability_tag_raw: linkability_tag,
+            merkle_path_raw: merkle_path,
+            leaf_index_raw: leaf_index,
         })
     }
 
@@ -180,6 +185,21 @@ impl AuthCircuit {
     }
 
     pub fn public_inputs(&self) -> Vec<Fp> {
+        // Compute Merkle root from path (matches circuit logic)
+        let mut current = self.stored_credential_hash_raw;
+        for level in 0..MERKLE_DEPTH {
+            let sibling = self.merkle_path_raw[level];
+            let direction_bit = (self.leaf_index_raw >> level) & 1;
+            let (left, right) = if direction_bit == 0 {
+                (current, sibling)
+            } else {
+                (sibling, current)
+            };
+            current = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<2>, WIDTH, RATE>::init()
+                .hash([left, right]);
+        }
+        let computed_merkle_root = current;
+
         // Compute bindings using Poseidon (strong cryptographic binding)
         let challenge_binding = poseidon::Hash::<
             _,
@@ -210,7 +230,7 @@ impl AuthCircuit {
         let expiration_time = self.timestamp_raw + Fp::from(3600u64);
 
         vec![
-            self.merkle_root_raw,
+            computed_merkle_root,  // Use computed root from path
             self.nullifier_raw,
             self.challenge_raw,
             self.client_pubkey_raw,
@@ -305,7 +325,9 @@ impl Default for AuthCircuit {
             timestamp_raw: Fp::zero(),
             device_commitment_raw: Fp::zero(),
             device_merkle_root_raw: Fp::zero(),
-            linkability_tag_raw: Fp::zero(), // NEW
+            linkability_tag_raw: Fp::zero(),
+            merkle_path_raw: [Fp::zero(); MERKLE_DEPTH],
+            leaf_index_raw: 0,
         }
     }
 }
@@ -619,12 +641,20 @@ impl Circuit<Fp> for AuthCircuit {
             )?;
         }
 
+        // Challenge cell
+        let challenge_cell = layouter.assign_region(
+            || "challenge",
+            |mut region| {
+                region.assign_advice(|| "challenge", config.advice[0], 0, || self.challenge)
+            },
+        )?;
+
         // Compute nullifier
         let nullifier_hasher = PoseidonHash::<
             _,
             _,
             poseidon::P128Pow5T3,
-            poseidon::ConstantLength<2>,
+            poseidon::ConstantLength<3>,
             WIDTH,
             RATE,
         >::init(
@@ -634,16 +664,10 @@ impl Circuit<Fp> for AuthCircuit {
 
         let computed_nullifier = nullifier_hasher.hash(
             layouter.namespace(|| "compute_nullifier"),
-            [username_cell, password_cell],
+            [username_cell, password_cell, challenge_cell.clone()],
         )?;
 
-        // Challenge cell
-        let challenge_cell = layouter.assign_region(
-            || "challenge",
-            |mut region| {
-                region.assign_advice(|| "challenge", config.advice[0], 0, || self.challenge)
-            },
-        )?;
+
 
         // Challenge binding using Poseidon (strong cryptographic binding)
         let challenge_binding_hasher = PoseidonHash::<
@@ -886,7 +910,7 @@ impl Circuit<Fp> for AuthCircuit {
         )?;
 
         // Constrain public inputs (10 total)
-        layouter.constrain_instance(current_hash.cell(), config.instance, 0)?; // merkle_root
+        layouter.constrain_instance(current_hash.cell(), config.instance, 0)?; // merkle_root (computed from path)
         layouter.constrain_instance(computed_nullifier.cell(), config.instance, 1)?; // nullifier
         layouter.constrain_instance(challenge_cell.cell(), config.instance, 2)?; // challenge
         layouter.constrain_instance(pubkey_cell.cell(), config.instance, 3)?; // client_pubkey

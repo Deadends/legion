@@ -289,7 +289,6 @@ struct AnonymousProofRequest {
     device_merkle_root: String,
     session_token: String,
     expiration_time: String,
-    linkability_tag: String,
 }
 
 async fn verify_anonymous_proof(
@@ -463,7 +462,7 @@ async fn verify_anonymous_proof(
         &req.device_merkle_root,
         &req.session_token,
         &req.expiration_time,
-        &req.linkability_tag,
+        14, // Default k=14
     ) {
         Ok((session_token, user_data_id)) => {
             let nullifier_hash = *blake3::hash(&nullifier_repr).as_bytes();
@@ -539,11 +538,6 @@ async fn verify_anonymous_proof(
 
             HttpResponse::Ok().json(response)
         }
-        Ok(false) => HttpResponse::Unauthorized().json(JsonResponse {
-            success: false,
-            data: None::<String>,
-            error: Some("Invalid proof or replay detected".to_string()),
-        }),
         Err(e) => HttpResponse::InternalServerError().json(JsonResponse {
             success: false,
             data: None::<String>,

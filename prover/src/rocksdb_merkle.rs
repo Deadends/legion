@@ -162,6 +162,26 @@ impl RocksDBMerkleTree {
         })
     }
 
+    pub fn get_leaves(&self) -> Vec<Fp> {
+        let db = self.db.lock().unwrap();
+        let mut leaves = Vec::new();
+        
+        for i in 0..self.next_index {
+            let key = format!("leaf:{}", i);
+            if let Ok(Some(bytes)) = db.get(key.as_bytes()) {
+                if bytes.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    if let Some(leaf) = Fp::from_repr(arr).into() {
+                        leaves.push(leaf);
+                    }
+                }
+            }
+        }
+        
+        leaves
+    }
+
     fn update_path_batch(
         &self,
         db: &DB,

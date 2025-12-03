@@ -18,7 +18,7 @@
 // LAYERED ARCHITECTURE
 #[cfg(not(target_arch = "wasm32"))]
 pub mod application_service;
-pub mod auth_circuit; // Layer 1: Pure Circuit (Math Only)
+pub mod auth_circuit; // Layer 1: Pure Circuit (Math Only) - Vanilla halo2
 #[cfg(not(target_arch = "wasm32"))]
 pub mod authentication_protocol; // Layer 2: Protocol Logic // Layer 3: Business Logic
 
@@ -130,3 +130,7 @@ pub fn fill_random_bytes(buf: &mut [u8]) -> anyhow::Result<()> {
 
 // Re-export Fp for convenience
 pub use pasta_curves::Fp;
+
+// Re-export halo2_gadgets for WASM client (when legacy-circuit feature is enabled)
+#[cfg(feature = "legacy-circuit")]
+pub use halo2_gadgets;

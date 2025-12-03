@@ -82,6 +82,12 @@ impl AnonymityMerkleTree {
         None
     }
 
+    #[cfg(feature = "rocksdb-storage")]
+    pub fn get_leaves(&self) -> Vec<Fp> {
+        self.rocksdb_tree.get_leaves()
+    }
+
+    #[cfg(not(feature = "rocksdb-storage"))]
     pub fn get_leaves(&self) -> Vec<Fp> {
         vec![]
     }

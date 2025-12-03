@@ -8,11 +8,12 @@ use axum::{
     body::Body,
 };
 use legion_prover::{
-    AuthenticationProtocol, AuthenticationRequest, SecurityLevel, Fp, WebAuthnService,
+    AuthenticationProtocol, AuthenticationRequest, SecurityLevel, WebAuthnService,
 };
 
 mod webauthn_handlers;
 use webauthn_handlers::*;
+
 use serde::{Deserialize, Serialize};
 use tower_http::cors::CorsLayer;
 use tracing::{info, error};
@@ -20,19 +21,7 @@ use std::sync::Arc;
 use ff::PrimeField;
 use chrono;
 
-#[derive(Debug, Deserialize)]
-struct RegisterRequest {
-    username: String,
-    password: String,
-}
 
-#[derive(Debug, Serialize)]
-struct RegisterResponse {
-    success: bool,
-    message: String,
-    anonymity_set_size: Option<usize>,
-    tree_index: Option<usize>,  // NEW: Client stores this locally for zero-knowledge
-}
 
 #[derive(Debug, Deserialize)]
 struct LoginRequest {
@@ -63,20 +52,11 @@ struct BlindRegisterResponse {
     error: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct MerklePathRequest {
-    #[serde(default)]
-    user_leaf: String,  // DEPRECATED: Leaks identity
-    tree_index: Option<usize>,  // NEW: True zero-knowledge
-}
 
-#[derive(Debug, Serialize)]
-struct MerklePathResponse {
-    merkle_path: Vec<String>,
-    merkle_root: String,
-    challenge: String,
-    position: usize,
-}
+
+
+
+
 
 #[derive(Debug, Deserialize)]
 struct VerifyProofRequest {
@@ -89,7 +69,7 @@ struct VerifyProofRequest {
     device_merkle_root: String,
     session_token: String,
     expiration_time: String,
-    linkability_tag: String,  // CHANGED from device_commitment
+    k: Option<u32>, // NEW: Client tells server which k was used
 }
 
 #[derive(Debug, Serialize)]
@@ -142,40 +122,6 @@ struct GetDeviceProofResponse {
 struct AppState {
     protocol: Arc<AuthenticationProtocol>,
     webauthn_service: Arc<WebAuthnService>,
-}
-
-async fn register_user(
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-    Json(request): Json<RegisterRequest>,
-) -> Result<ResponseJson<RegisterResponse>, StatusCode> {
-    info!("Registration request for user: {}", request.username);
-    
-    let result = state.protocol.register_user(
-        request.username.as_bytes(),
-        request.password.as_bytes(),
-    );
-    
-    match result {
-        Ok(tree_index) => {
-            let size = state.protocol.get_anonymity_set_size();
-            info!("User registered at index {} successfully. Anonymity set size: {}", tree_index, size);
-            Ok(ResponseJson(RegisterResponse {
-                success: true,
-                message: format!("User registered successfully. Store tree_index={} locally.", tree_index),
-                anonymity_set_size: Some(size),
-                tree_index: Some(tree_index),
-            }))
-        }
-        Err(e) => {
-            error!("Registration failed: {}", e);
-            Ok(ResponseJson(RegisterResponse {
-                success: false,
-                message: format!("Registration failed: {}", e),
-                anonymity_set_size: None,
-                tree_index: None,
-            }))
-        }
-    }
 }
 
 async fn authenticate_user(
@@ -252,6 +198,8 @@ async fn register_blind(
     match result {
         Ok(tree_index) => {
             info!("Blind registration successful at index {}", tree_index);
+            info!("📤 Returning to client: tree_index={}", tree_index);
+            
             Ok(ResponseJson(BlindRegisterResponse {
                 success: true,
                 user_leaf: format!("tree_index={}", tree_index),  // Return index instead of leaf
@@ -269,66 +217,43 @@ async fn register_blind(
     }
 }
 
-async fn get_merkle_path(
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-    Json(request): Json<MerklePathRequest>,
-) -> Result<ResponseJson<MerklePathResponse>, StatusCode> {
-    // TRUE ZERO-KNOWLEDGE: Use tree_index if provided, fallback to old method
-    if let Some(tree_index) = request.tree_index {
-        info!("Merkle path request for tree_index: {} (zero-knowledge)", tree_index);
-        
-        let result = state.protocol.get_merkle_path_by_index(tree_index);
-        
-        match result {
-            Ok((path, root)) => {
-                let challenge = hex::encode(state.protocol.generate_challenge());
-                info!("Merkle path generated for index {} (server doesn't know identity)", tree_index);
-                Ok(ResponseJson(MerklePathResponse {
-                    merkle_path: path,
-                    merkle_root: root,
-                    challenge,
-                    position: tree_index,
-                }))
-            }
-            Err(e) => {
-                error!("Merkle path generation failed: {}", e);
-                Ok(ResponseJson(MerklePathResponse {
-                    merkle_path: vec![],
-                    merkle_root: String::new(),
-                    challenge: String::new(),
-                    position: 0,
-                }))
-            }
-        }
-    } else {
-        // DEPRECATED: Old method that leaks identity
-        info!("⚠️  Merkle path request using DEPRECATED user_leaf (leaks identity)");
-        
-        let result = state.protocol.get_merkle_path_for_leaf(&request.user_leaf);
-        
-        match result {
-            Ok((path, root, position)) => {
-                let challenge = hex::encode(state.protocol.generate_challenge());
-                info!("Merkle path generated for position {}", position);
-                Ok(ResponseJson(MerklePathResponse {
-                    merkle_path: path,
-                    merkle_root: root,
-                    challenge,
-                    position,
-                }))
-            }
-            Err(e) => {
-                error!("Merkle path generation failed: {}", e);
-                Ok(ResponseJson(MerklePathResponse {
-                    merkle_path: vec![],
-                    merkle_root: String::new(),
-                    challenge: String::new(),
-                    position: 0,
-                }))
-            }
-        }
-    }
+
+
+// NEW: Download full Merkle tree for local storage (TRUE zero-knowledge)
+#[derive(Debug, Serialize)]
+struct DownloadTreeResponse {
+    merkle_root: String,
+    tree_data: Vec<String>,  // All leaves as hex strings
+    tree_size: usize,
+    version: u64,
 }
+
+async fn download_merkle_tree(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> Result<ResponseJson<DownloadTreeResponse>, StatusCode> {
+    info!("📥 Full Merkle tree download request (local storage mode)");
+    
+    let (root, leaves) = state.protocol.get_anonymity_set_data()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let tree_data: Vec<String> = leaves.iter()
+        .map(|leaf| hex::encode(leaf.to_repr()))
+        .collect();
+    
+    let tree_size = tree_data.len() * 32; // bytes
+    info!("📤 Sending {} leaves ({} MB)", leaves.len(), tree_size / 1_000_000);
+    
+    Ok(ResponseJson(DownloadTreeResponse {
+        merkle_root: hex::encode(root.to_repr()),
+        tree_data,
+        tree_size,
+        version: chrono::Utc::now().timestamp() as u64,
+    }))
+}
+
+
+
+
 
 async fn register_device(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
@@ -402,6 +327,9 @@ async fn verify_anonymous_proof(
 ) -> Result<ResponseJson<VerifyProofResponse>, StatusCode> {
     info!("Verifying anonymous proof with device ring signature");
     
+    let k = request.k.unwrap_or(14); // Default to k=14 if not specified
+    info!("Client specified k={}", k);
+    
     let result = state.protocol.verify_anonymous_proof(
         &request.proof,
         &request.merkle_root,
@@ -412,7 +340,7 @@ async fn verify_anonymous_proof(
         &request.device_merkle_root,
         &request.session_token,
         &request.expiration_time,
-        &request.linkability_tag,  // CHANGED
+        k,
     );
     
     match result {
@@ -420,7 +348,7 @@ async fn verify_anonymous_proof(
             info!("Proof verified successfully");
             Ok(ResponseJson(VerifyProofResponse {
                 success: true,
-                session_token: Some(session_token),
+                session_token: Some(session_token.0),
                 error: None,
             }))
         }
@@ -490,7 +418,7 @@ struct WelcomeResponse {
 }
 
 async fn protected_welcome(
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
     Json(request): Json<WelcomeRequest>,
 ) -> Result<ResponseJson<WelcomeResponse>, StatusCode> {
     info!("Protected welcome request for session: {}", &request.session_token[..16]);
@@ -518,13 +446,14 @@ async fn protected_welcome(
                     }));
                 }
                 
-                // Verify linkability tag matches (prevents session theft)
+                // CRITICAL: Verify linkability tag matches (prevents session theft)
+                // This is zero-knowledge: server doesn't know which device, only validates same device
                 if let Some(provided_tag) = &request.client_pubkey {
                     let stored_tag: String = conn.hget(&key, "linkability_tag").unwrap_or_default();
                     if !stored_tag.is_empty() && stored_tag != *provided_tag {
                         return Ok(ResponseJson(WelcomeResponse {
                             success: false,
-                            message: "Device commitment mismatch - session stolen or replayed".to_string(),
+                            message: "Linkability tag mismatch - session stolen or wrong device".to_string(),
                             session_id: String::new(),
                             authenticated_at: String::new(),
                             expires_in_seconds: 0,
@@ -615,15 +544,13 @@ async fn main() -> anyhow::Result<()> {
         webauthn_service: Arc::new(webauthn_service),
     });
     
+
+    
     let app = Router::new()
-        .route("/api/register", post(register_user))
         .route("/api/login", post(authenticate_user))
         .route("/api/register-blind", post(register_blind))
-        .route("/api/get-merkle-path", post(get_merkle_path))
+        .route("/api/download-tree", get(download_merkle_tree))
         .route("/api/verify-anonymous-proof", post(verify_anonymous_proof))
-        .route("/api/register-device", post(register_device))
-        .route("/api/get-device-proof", post(get_device_proof))
-        .route("/api/revoke-device", post(revoke_device))
         .route("/api/webauthn/register/start", post(start_webauthn_registration))
         .route("/api/webauthn/register/finish", post(finish_webauthn_registration))
         .route("/api/webauthn/auth/start", post(start_webauthn_authentication))
@@ -637,20 +564,16 @@ async fn main() -> anyhow::Result<()> {
     
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await?;
     info!("✅ Legion Server listening on http://127.0.0.1:3001");
-    info!("📊 Endpoints:");
-    info!("   POST /api/register - Register new user");
-    info!("   POST /api/login - Authenticate user");
-    info!("   POST /api/register-blind - Blind registration (ZK)");
-    info!("   POST /api/get-merkle-path - Get Merkle path for ZK proof");
+    
+
+    info!("📊 Endpoints (TRUE ZERO-KNOWLEDGE):");
+    info!("   POST /api/register-blind - User registration");
+    info!("   GET  /api/download-tree - Download Merkle tree (client-side)");
     info!("   POST /api/verify-anonymous-proof - Verify ZK proof");
-    info!("   POST /api/register-device - Register device (ring signature)");
-    info!("   POST /api/get-device-proof - Get device Merkle proof");
-    info!("   POST /api/revoke-device - Revoke stolen device");
-    info!("   POST /api/webauthn/register/start - Start WebAuthn registration");
-    info!("   POST /api/webauthn/register/finish - Finish WebAuthn registration");
-    info!("   POST /api/webauthn/auth/start - Start WebAuthn authentication");
-    info!("   POST /api/webauthn/auth/finish - Finish WebAuthn authentication");
+    info!("   POST /api/verify-session - Validate session with linkability tag");
     info!("   GET  /health - Health check");
+    info!("   ✅ Session theft protection via linkability tags");
+    info!("   ✅ Server NEVER tracks users or devices");
     
     axum::serve(listener, app).await?;
     

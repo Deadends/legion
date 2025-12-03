@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Legion Login Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .log { margin: 5px 0; }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #0af; }
+        button { margin: 10px 5px; padding: 10px 20px; font-size: 16px; }
+        input { margin: 5px; padding: 10px; font-size: 16px; background: #333; color: #fff; border: 1px solid #555; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Legion Login Test</h1>
+    
+    <div>
+        <input type="text" id="username" placeholder="Username" value="testuser_1732064577154">
+        <input type="password" id="password" placeholder="Password" value="testpass123">
+        <button onclick="loginUser()">Login</button>
+        <button onclick="clearCache()">Clear Cache</button>
+    </div>
+    
+    <div id="log"></div>
+    
+    <script type="module">
+        import init, { authenticate_user } from './pkg/legion_wasm_client.js';
+        
+        await init();
+        
+        window.loginUser = async function() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                log('❌ Please enter username and password', 'error');
+                return;
+            }
+            
+            log(`🔐 Attempting login for: ${username}`, 'info');
+            
+            try {
+                // Clear PIR cache to force fresh setup
+                localStorage.removeItem('legion_pir_version');
+                localStorage.removeItem('legion_pir_hint');
+                localStorage.removeItem('legion_pir_filter');
+                log('🧹 Cleared PIR cache for fresh authentication', 'info');
+                
+                const result = await authenticate_user(username, password, 'http://localhost:3001');
+                log(`✅ Login successful!`, 'success');
+                log(`Session token: ${result.substring(0, 32)}...`, 'success');
+                
+            } catch (e) {
+                log(`❌ Login failed: ${e}`, 'error');
+                
+                if (e.toString().includes('PIR database was rebuilt')) {
+                    log('🔄 PIR database was rebuilt, retrying in 5 seconds...', 'info');
+                    setTimeout(async () => {
+                        try {
+                            log('🔄 Retrying authentication...', 'info');
+                            const result = await authenticate_user(username, password, 'http://localhost:3001');
+                            log(`✅ Login successful on retry!`, 'success');
+                            log(`Session token: ${result.substring(0, 32)}...`, 'success');
+                        } catch (retryError) {
+                            log(`❌ Retry failed: ${retryError}`, 'error');
+                        }
+                    }, 5000);
+                }
+            }
+        };
+        
+        window.clearCache = function() {
+            localStorage.clear();
+            log('✅ All cache cleared', 'success');
+        };
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            document.getElementById('log').appendChild(div);
+            console.log(message);
+        }
+        
+        log('✅ Login test page loaded', 'success');
+        log('ℹ️  Enter credentials and click Login', 'info');
+    </script>
+</body>
+</html>

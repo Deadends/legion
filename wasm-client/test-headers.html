@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SharedArrayBuffer Test</title>
+</head>
+<body>
+    <h1>SharedArrayBuffer Test</h1>
+    <div id="result"></div>
+    <script>
+        const result = document.getElementById('result');
+        
+        if (typeof SharedArrayBuffer !== 'undefined') {
+            result.innerHTML = '<p style="color: green;">✅ SharedArrayBuffer is ENABLED</p>';
+            result.innerHTML += '<p>Headers are correct. Rayon will work.</p>';
+        } else {
+            result.innerHTML = '<p style="color: red;">❌ SharedArrayBuffer is DISABLED</p>';
+            result.innerHTML += '<p>Missing COOP/COEP headers or browser doesn\'t support it.</p>';
+            result.innerHTML += '<p>Check Network tab for headers.</p>';
+        }
+    </script>
+</body>
+</html>

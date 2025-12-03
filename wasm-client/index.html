@@ -284,10 +284,10 @@
                 <div class="form-group">
                     <label for="securityLevel">Security Level</label>
                     <select id="securityLevel">
+                        <option value="10">Fast (k=10) — 5 seconds</option>
                         <option value="12">Development (k=12) — 10 seconds</option>
                         <option value="14" selected>Standard (k=14) — 60 seconds</option>
                         <option value="16">Production (k=16) — 4 minutes</option>
-                        <option value="18">Maximum (k=18) — 15 minutes</option>
                     </select>
                 </div>
                 <button type="submit" id="loginButton">Generate Proof & Authenticate</button>
@@ -325,6 +325,7 @@
 
         async function run() {
             await init();
+            console.log('✓ WASM initialized');
             
             document.getElementById('registerForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -377,7 +378,7 @@
                     const totalTime = Math.round(performance.now() - startTime);
                     
                     if (result.success) {
-                        showStatus('loginStatus', `Authentication successful | ${totalTime}ms`, 'success');
+                        showStatus('loginStatus', `✅ Authentication successful | ${totalTime}ms`, 'success');
                         
                         if (result.session_token) {
                             localStorage.setItem('legion_session', result.session_token);

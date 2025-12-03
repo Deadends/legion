@@ -1,6 +1,27 @@
-# Local build without downloading base images
-# This assumes you have Rust installed locally
+# Multi-stage build with newer Rust
+FROM rust:1.80-slim AS builder
 
+WORKDIR /build
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    clang \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace files
+COPY Cargo.toml ./
+COPY prover ./prover
+COPY verifier ./verifier
+COPY crypto_constants ./crypto_constants
+
+# Build the prover binary
+WORKDIR /build
+RUN cargo build --release --manifest-path prover/Cargo.toml
+
+# Production image
 FROM debian:bookworm-slim
 
 WORKDIR /app
@@ -12,8 +33,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-built binary from your local build
-COPY target/release/legion-prover /app/legion-prover
+# Copy binary from builder
+COPY --from=builder /build/target/release/legion-prover /app/legion-prover
 
 # Create data directory
 RUN mkdir -p /app/legion_data

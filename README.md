@@ -114,29 +114,27 @@ python3 -m http.server 8000
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                            CLIENT (Browser)                              │
+│                       CLIENT (Browser + WASM)                            │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────────────┐   │
-│  │  UI Layer      │  │  WASM Module    │  │  Hardware Security       │   │
-│  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (WebAuthn Level 2)      │   │
+│  │  UI Layer      │  │  WASM Prover    │  │  Local Storage           │  │
+│  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (IndexedDB)             │  │
 │  ├────────────────┤  ├─────────────────┤  ├──────────────────────────┤   │
-│  │ • Registration │  │ • Blake3 Hash   │  │ • TPM 2.0                │   │
-│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Secure Enclave         │   │
-│  │ • Session UI   │  │ • Halo2 Prover  │  │ • FIDO2 Authenticator    │   │
-│  │ • Error Handle │  │ • Merkle Proof  │  │ • Device Private Key     │   │
-│  └────────────────┘  └─────────────────┘  └──────────────────────────┘   │
+│  │ • Registration │  │ • Blake3 Hash   │  │ • Full Merkle Tree       │  │
+│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Device Trees           │  │
+│  │ • Session UI   │  │ • Halo2 Prover  │  │ • WebAuthn Credentials   │  │
+│  │ • Tree Sync    │  │ • Merkle Proof  │  │ • Tree Version Cache     │  │
+│  └────────────────┘  │ • Ring Sigs     │  └──────────────────────────┘   │
+│                      └─────────────────┘                                 │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │              Hardware Security (WebAuthn Level 2)                │  │
+│  ├──────────────────────────────────────────────────────────────────┤    │
+│  │ • TPM 2.0 / Secure Enclave    • FIDO2 Authenticator              │    │
+│  │ • Device Private Key (ECDSA)  • Biometric/Touch Required         │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
 └────────────────────────────────┬─────────────────────────────────────────┘
                                  │ HTTPS/TLS 1.3
                                  │ (Encrypted Channel)
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         REVERSE PROXY (Nginx)                            │
-├──────────────────────────────────────────────────────────────────────────┤
-│  • TLS Termination          • Rate Limiting (100 req/min)                │
-│  • Load Balancing           • Request Logging                            │
-│  • Static File Serving      • Security Headers (CSP, HSTS)               │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │ HTTP (Internal Network)
                                  ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    LEGION SERVER (Rust/Axum)                             │
@@ -144,25 +142,31 @@ python3 -m http.server 8000
 │  ┌─────────────────────────────────────────────────────────────────┐     │
 │  │                      API Layer (Axum)                           │     │
 │  ├─────────────────────────────────────────────────────────────────┤     │
-│  │ POST /register        │ POST /auth/challenge │ POST /auth/verify│     │
-│  │ POST /auth/session    │ GET  /health         │ POST /logout     │     │
+│  │ POST /api/register-blind          │ Blind registration          │     │
+│  │ GET  /api/download-tree           │ Download full Merkle tree   │     │
+│  │ POST /api/verify-anonymous-proof  │ Verify ZK proof             │     │
+│  │ POST /api/verify-session          │ Session validation          │     │
+│  │ POST /api/webauthn/*              │ WebAuthn endpoints          │     │
+│  │ GET  /health                      │ Health check                │     │
 │  └─────────────────────────────────────────────────────────────────┘     │
 │                                   │                                      │
 │  ┌─────────────────────────────────────────────────────────────────┐     │
 │  │                   Business Logic Layer                          │     │
 │  ├─────────────────────────────────────────────────────────────────┤     │
-│  │ • Credential Manager    │ • Challenge Generator (32-byte random)│     │
-│  │ • Merkle Tree Builder   │ • Nullifier Tracker (replay protection)│    │
-│  │ • ZK Proof Verifier     │ • Session Manager (linkability tags)  │     │
-│  │ • Device Tree Manager   │ • Timestamp Validator (±5min window)  │     │
+│  │ • Blind Registration    │ • Tree Synchronization                │     │
+│  │ • ZK Proof Verifier     │ • Nullifier Tracker (replay)          │     │
+│  │ • Session Manager       │ • Linkability Tag Validator           │     │
+│  │ • WebAuthn Service      │ • Timestamp Validator (±10min)        │     │
+│  │ • Device Revocation     │ • Rate Limiter (5/hour)               │     │
 │  └─────────────────────────────────────────────────────────────────┘     │
 │                                   │                                      │
 │  ┌─────────────────────────────────────────────────────────────────┐     │
 │  │                   Cryptographic Layer                           │     │
 │  ├─────────────────────────────────────────────────────────────────┤     │
 │  │ • Halo2 Verifier (PLONK) │ • Poseidon Hash (ZK-friendly)        │     │
-│  │ • Blake3 (credential hash)│ • Argon2id (password KDF)           │     │
-│  │ • Merkle Tree (2^20 users)│ • Device Tree (2^10 devices/user)   │     │
+│  │ • Blake3 (credential)    │ • Argon2id (password KDF)            │     │
+│  │ • Merkle Tree (2^20)     │ • Device Trees (2^10 per user)       │     │
+│  │ • Ring Signature Verify  │ • WebAuthn Signature Verify          │     │
 │  └─────────────────────────────────────────────────────────────────┘     │
 └────────────────────────┬──────────────────────┬──────────────────────────┘
                          │                      │
@@ -170,11 +174,11 @@ python3 -m http.server 8000
         ┌────────────────────────┐  ┌───────────────────────────┐
         │   Redis (In-Memory)    │  │  RocksDB (Persistent)     │
         ├────────────────────────┤  ├───────────────────────────┤
-        │ • Session Tokens       │  │ • User Credentials        │
-        │ • Linkability Tags     │  │ • Merkle Tree Nodes       │
-        │ • Active Challenges    │  │ • Device Trees            │
-        │ • Nullifier Cache      │  │ • Nullifier History       │
-        │ TTL: 1 hour            │  │ Persistent Storage        │
+        │ • Session Tokens       │  │ • Merkle Tree Leaves      │
+        │ • Linkability Tags     │  │ • Device Trees            │
+        │ • Spent Nullifiers     │  │ • Nullifier History       │
+        │ • Rate Limit Counters  │  │ • WebAuthn Credentials    │
+        │ TTL: 1 hour            │  │ • Revoked Devices         │
         └────────────────────────┘  └───────────────────────────┘
 ```
 
@@ -189,50 +193,62 @@ python3 -m http.server 8000
        │ 1. Hash credentials (Blake3 + Argon2id)                      │
        │    credential_hash = Blake3(username) || Argon2id(password)  │
        │                                                              │
-       │ 2. Request Merkle path + challenge (tree_index)         ────►│
-       │    → Sends position number (e.g., 42), NOT credentials      │
-       │    → Server cannot identify which user (TRUE ZERO-KNOWLEDGE)│
-       │                                                         ◄────│ {merkle_path, challenge,
-       │                                                              │  position}
+       │ 2. Blind registration (TRUE zero-knowledge)             ────►│
+       │    → Sends ONLY credential_hash (no username/password)       │
+       │    → Server adds to tree, returns tree_index                 │
+       │                                                         ◄────│ {tree_index: 86}
        │                                                              │
-       │ 3. Generate WebAuthn key (TPM/Secure Enclave)                │
+       │ 3. Download full Merkle tree (one-time sync)            ────►│
+       │    → Client stores entire tree in IndexedDB                  │
+       │    → Enables TRUE zero-knowledge (no server queries)         │
+       │                                                         ◄────│ {tree_data: [all leaves],
+       │                                                              │  merkle_root, version}
+       │                                                              │
+       │ 4. Generate WebAuthn key (TPM/Secure Enclave)                │
        │    → device_pubkey (hardware-bound, ECDSA P-256)             │
        │    → User gesture required (touch/biometric)                 │
+       │    → Stored in hardware security module                      │
        │                                                              │
-       │ 4. Compute nullifier (replay protection)                     │
-       │    nullifier = Poseidon(credential_hash || challenge)        │
-       │    → Check if nullifier already exists (abort if yes)        │
+       │ 5. Compute Merkle proof CLIENT-SIDE (zero-knowledge!)        │
+       │    → Uses local tree from IndexedDB                          │
+       │    → Computes path for tree_index                            │
+       │    → Server NEVER learns which user!                         │
        │                                                              │
-       │ 5. Compute linkability tag (session binding)                 │
+       │ 6. Compute nullifier (replay protection)                     │
+       │    nullifier = Poseidon(username_hash || password_hash || timestamp) │
+       │    → ONE-TIME USE: Different every login                     │
+       │    → Prevents proof replay attacks                           │
+       │                                                              │
+       │ 7. Compute linkability tag (session binding)                 │
        │    linkability_tag = Blake3(device_pubkey || nullifier)      │
        │    ⚠️  Binds session to specific device+user                 │        
        │                                                              │
-       │ 6. Generate ZK proof (Halo2 PLONK, ~4min for k=16)           │
+       │ 8. Generate ZK proof (Halo2 PLONK, ~4min for k=16)           │
        │    Proves in zero-knowledge:                                 │
        │    ✓ User exists in Merkle tree (1 of 2^20)                  │
        │    ✓ Device exists in device tree (1 of 2^10)                │
        │    ✓ Credential hash is correct                              │
        │    ✓ Nullifier computed correctly                            │
-       │    ✓ Challenge binding valid                                 │
+       │    ✓ Timestamp is fresh                                      │
        │    WITHOUT revealing which user or device                    │
        │                                                              │
-       │ 7. Submit proof                                         ────►│
-       │    {proof, public_inputs, linkability_tag}                   │
-       │                                                              │ • Check device not revoked (NEW)
+       │ 9. Submit proof                                         ────►│
+       │    {proof, public_inputs, linkability_tag, k=14}             │
+       │                                                              │ • Check device not revoked
        │                                                              │ • Verify timestamp (±10min)
-       │                                                              │ • Rate limit check (5/hour) (NEW)
+       │                                                              │ • Rate limit check (5/hour)
        │                                                              │ • Check nullifier (replay?)
-       │                                                              │ • Verify ZK proof (~10ms)
-       │                                                              │ • Validate challenge
+       │                                                              │ • Verify ZK proof (~34s)
        │                                                              │ • Mark nullifier as used
        │                                                              │
        │                                                         ◄────│ {session_token, expires_at}
        │                                                              │
-       │ 8. Verify session (every request)                       ────►│
+       │ 10. Verify session (every request)                      ────►│
        │    {session_token, linkability_tag}                          │
        │                                                              │ • Lookup in Redis
        │                                                              │ • Verify linkability_tag
        │                                                              │   (prevents session theft)
+       │                                                              │ • Check not spent
        │                                                         ◄────│ {valid: true}
        │                                                              │
 ```
@@ -327,13 +343,17 @@ python3 -m http.server 8000
 - ✅ Same user+device via linkability tag
 - ✅ Rate limit status (attempts remaining)
 - ✅ Device revocation status
+- ✅ Total number of registered users
+- ✅ Merkle tree root (public)
 
 ### What Server CANNOT Know
 - ❌ Which specific user (1 of 1M)
 - ❌ Which specific device (1 of 1K)
 - ❌ Username or password
 - ❌ Device private key
-- ❌ Merkle tree position (uses tree_index for true ZK)
+- ❌ Which tree leaf belongs to which user
+- ❌ Merkle path computation (done client-side)
+- ❌ User's tree_index position
 
 ## 📦 Deployment
 
@@ -383,13 +403,14 @@ cargo bench
 
 ## 🛠️ Technology Stack
 
-- **ZK Proofs**: Halo2 (PLONK)
-- **Curves**: Pasta (Pallas/Vesta)
-- **Hash**: Blake3, Poseidon
-- **Password**: Argon2id
-- **Hardware**: WebAuthn Level 2
-- **Backend**: Rust, Axum, Redis, RocksDB
-- **Frontend**: WASM, Vanilla JS
+- **ZK Proofs**: Halo2 (PLONK) - Transparent setup, no trusted ceremony
+- **Curves**: Pasta (Pallas/Vesta) - Cycle of curves for recursion
+- **Hash**: Blake3 (fast), Poseidon (ZK-friendly)
+- **Password**: Argon2id (memory-hard KDF)
+- **Hardware**: WebAuthn Level 2 (TPM 2.0, Secure Enclave)
+- **Backend**: Rust, Axum, Redis (sessions), RocksDB (persistence)
+- **Frontend**: Rust→WASM (prover), Vanilla JS (UI), IndexedDB (storage)
+- **Deployment**: Docker, Nginx, systemd
 
 ## 🤝 Contributing
 
@@ -413,20 +434,32 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🔄 Changelog
 
+### v1.2.0 - Client-Side Proving Architecture (2024)
+
+**Major Changes**:
+- ✅ **Client-side Merkle tree storage** (IndexedDB) - TRUE zero-knowledge
+- ✅ **Blind registration** - Server never sees username/password
+- ✅ **Local proof generation** - All cryptography in WASM
+- ✅ **Tree synchronization** - Download full tree once, compute paths locally
+- ✅ **Spent nullifiers** - Single-use sessions prevent concurrent access
+
+**Architecture**:
+- 🏗️ Moved from server-side path generation to client-side
+- 🏗️ Client downloads full Merkle tree (87 users = ~3KB)
+- 🏗️ Server NEVER learns which user is authenticating
+- 🏗️ WebAuthn integration for hardware-bound device keys
+
 ### v1.1.0 - Security Hardening (2024)
 
 **Added**:
-- ✅ True zero-knowledge authentication using `tree_index`
 - ✅ Rate limiting (5 attempts/hour per credential)
 - ✅ Device revocation API and enforcement
-- ✅ Backward compatibility for old clients
+- ✅ Linkability tags for session theft prevention
 
 **Security Fixes**:
 - 🔒 Fixed identity leakage in challenge requests
 - 🔒 Prevented brute force attacks with rate limiting
 - 🔒 Enabled stolen device mitigation via revocation
-
-**See [SECURITY_FIXES.md](SECURITY_FIXES.md) for complete details.**
 
 ---
 

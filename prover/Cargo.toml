@@ -7,11 +7,13 @@ edition = "2021"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("post-quantum", "nova", "webauthn", "http-server", "rocksdb-storage", "hsm", "cloud-aws", "cloud-azure", "enterprise", "wasm"))'] }
 
 [dependencies]
-# Core ZK dependencies (stable 0.3, single-threaded WASM)
-halo2_proofs = { version = "0.3", default-features = false }
-halo2_gadgets = { version = "0.3", default-features = false }
+# Core ZK dependencies - vanilla Halo2 (Pasta curves)
 pasta_curves = { version = "0.5", default-features = false }
 ff = { version = "0.13", default-features = false }
+
+# Use stable Halo2 release (single-threaded WASM, multi-threaded native)
+halo2_proofs = { version = "0.3", default-features = false, optional = true }
+halo2_gadgets = { version = "0.3", default-features = false, optional = true }
 rand_core = "0.6"
 rand = "0.8"
 
@@ -57,7 +59,7 @@ raw-cpuid = { version = "10.7", optional = true }
 get_if_addrs = { version = "0.5", optional = true }
 tokio = { version = "1.0", features = ["full"], optional = true }
 rayon = { version = "1.8", optional = true }
-redis = { version = "0.24", features = ["tokio-comp"], optional = true }
+redis = { version = "0.24", features = ["tokio-comp"] }
 actix-web = { version = "4.5", optional = true }
 actix-cors = { version = "0.7", optional = true }
 actix-files = { version = "0.6", optional = true }
@@ -72,8 +74,8 @@ neptune = { version = "13.0", optional = true }
 typenum = { version = "1.17", optional = true }
 
 [features]
-default = ["native", "rocksdb-storage", "webauthn", "http-server", "redis"]
-native = ["rayon", "tokio", "tracing", "raw-cpuid", "get_if_addrs", "redis", "zstd"]
+default = ["native", "rocksdb-storage", "webauthn", "http-server", "legacy-circuit"]
+native = ["rayon", "tokio", "tracing", "raw-cpuid", "get_if_addrs"]
 webauthn = ["webauthn-rs", "webauthn-rs-proto", "tokio"]
 http-server = ["actix-web", "actix-cors", "actix-files", "tokio"]
 rocksdb-storage = ["rocksdb", "zstd"]
@@ -86,8 +88,11 @@ cloud-aws = ["aws-sdk-kms"]            # AWS Key Management
 cloud-azure = ["azure_security_keyvault"] # Azure Key Vault
 enterprise = ["hsm", "cloud-aws"]      # Production enterprise
 
-# WASM support with multithreading (PSE halo2 0.4)
+# WASM support (single-threaded - vanilla Halo2)
 wasm = []
+
+# Legacy circuit support (for gradual migration)
+legacy-circuit = ["halo2_proofs", "halo2_gadgets"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

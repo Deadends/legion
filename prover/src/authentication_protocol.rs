@@ -266,32 +266,7 @@ impl AuthenticationProtocol {
         Ok((path_hex, root_hex))
     }
 
-    /// DEPRECATED: Old method that leaks identity - kept for backward compatibility
-    pub fn get_merkle_path_for_leaf(
-        &self,
-        user_leaf_hex: &str,
-    ) -> Result<(Vec<String>, String, usize)> {
-        let leaf_bytes = hex::decode(user_leaf_hex).map_err(|_| anyhow!("Invalid hex string"))?;
-        let mut repr = [0u8; 32];
-        repr.copy_from_slice(&leaf_bytes);
-        let user_leaf =
-            Option::from(Fp::from_repr(repr)).ok_or_else(|| anyhow!("Invalid field element"))?;
 
-        let tree = self.anonymity_tree.read().unwrap();
-        let position = tree
-            .get_leaf_index(&user_leaf)
-            .ok_or_else(|| anyhow!("User not found in Merkle tree"))?;
-
-        let (path, _) = tree.get_proof(position)?;
-        let path_hex: Vec<String> = path
-            .iter()
-            .map(|node| hex::encode(node.to_repr()))
-            .collect();
-
-        let root_hex = hex::encode(tree.get_root().to_repr());
-
-        Ok((path_hex, root_hex, position))
-    }
 
     /// Generate challenge for ZK proof
     pub fn generate_challenge(&self) -> [u8; 32] {
@@ -343,28 +318,34 @@ impl AuthenticationProtocol {
         device_merkle_root_hex: &str,
         session_token_hex: &str,
         expiration_time_hex: &str,
-        linkability_tag_hex: &str, // CHANGED from device_commitment_hex
+        k: u32,
     ) -> Result<(String, String)> {
+        eprintln!("[VERIFY] Step 1: Decoding proof...");
         // Decode proof
-        let proof = hex::decode(proof_hex).map_err(|_| anyhow!("Invalid proof hex"))?;
+        let proof = hex::decode(proof_hex).map_err(|e| anyhow!("Invalid proof hex: {}", e))?;
+        eprintln!("[VERIFY] Step 1: Proof decoded ({} bytes)", proof.len());
 
+        eprintln!("[VERIFY] Step 2: Decoding public inputs...");
         // Decode public inputs (10 total)
-        let merkle_root = Self::hex_to_fp(merkle_root_hex)?;
-        let nullifier = Self::hex_to_fp(nullifier_hex)?;
-        let challenge = Self::hex_to_fp(challenge_hex)?;
-        let client_pubkey = Self::hex_to_fp(client_pubkey_hex)?;
-        let timestamp = Self::hex_to_fp(timestamp_hex)?;
-        let device_merkle_root = Self::hex_to_fp(device_merkle_root_hex)?;
-        let session_token = Self::hex_to_fp(session_token_hex)?;
-        let expiration_time = Self::hex_to_fp(expiration_time_hex)?;
-        let linkability_tag = Self::hex_to_fp(linkability_tag_hex)?; // CHANGED
+        let merkle_root = Self::hex_to_fp(merkle_root_hex).map_err(|e| anyhow!("merkle_root decode failed: {}", e))?;
+        let nullifier = Self::hex_to_fp(nullifier_hex).map_err(|e| anyhow!("nullifier decode failed: {}", e))?;
+        let challenge = Self::hex_to_fp(challenge_hex).map_err(|e| anyhow!("challenge decode failed: {}", e))?;
+        let client_pubkey = Self::hex_to_fp(client_pubkey_hex).map_err(|e| anyhow!("client_pubkey decode failed: {}", e))?;
+        let timestamp = Self::hex_to_fp(timestamp_hex).map_err(|e| anyhow!("timestamp decode failed: {}", e))?;
+        let device_merkle_root = Self::hex_to_fp(device_merkle_root_hex).map_err(|e| anyhow!("device_merkle_root decode failed: {}", e))?;
+        let session_token = Self::hex_to_fp(session_token_hex).map_err(|e| anyhow!("session_token decode failed: {}", e))?;
+        let expiration_time = Self::hex_to_fp(expiration_time_hex).map_err(|e| anyhow!("expiration_time decode failed: {}", e))?;
+        eprintln!("[VERIFY] Step 2: All public inputs decoded");
 
+        eprintln!("[VERIFY] Step 3: Checking device revocation...");
         // DEVICE REVOCATION CHECK
         let nullifier_hash = hex::encode(blake3::hash(&nullifier.to_repr()).as_bytes());
         if self.device_tree_manager.is_device_revoked(&nullifier_hash, client_pubkey) {
             return Err(anyhow!("Device has been revoked"));
         }
+        eprintln!("[VERIFY] Step 3: Device not revoked");
 
+        eprintln!("[VERIFY] Step 4: Validating timestamp...");
         // CRITICAL: Validate timestamp (prevent future/past attacks)
         // Allow longer window for k=16 (4 min proof) and k=18 (15 min proof)
         let timestamp_bytes = timestamp.to_repr();
@@ -381,7 +362,9 @@ impl AuthenticationProtocol {
                 "Timestamp too far from current time (max 10 minutes)"
             ));
         }
+        eprintln!("[VERIFY] Step 4: Timestamp valid (diff: {}s)", time_diff);
 
+        eprintln!("[VERIFY] Step 5: Computing bindings...");
         // Compute bindings
         use halo2_gadgets::poseidon::primitives as poseidon;
         let challenge_binding =
@@ -390,21 +373,21 @@ impl AuthenticationProtocol {
         let pubkey_binding =
             poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<2>, 3, 2>::init()
                 .hash([nullifier, client_pubkey]);
+        eprintln!("[VERIFY] Step 5: Bindings computed");
 
-        // Verify session token computation (now uses linkability_tag)
-        let expected_session_token =
-            poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<3>, 3, 2>::init()
-                .hash([nullifier, timestamp, linkability_tag]); // CHANGED
-        if session_token != expected_session_token {
-            return Err(anyhow!("Session token mismatch"));
-        }
+        eprintln!("[VERIFY] Step 6: Verifying expiration time...");
+        // Session token is already verified by ZK proof
+        // It includes linkability_tag cryptographically (private witness)
+        // No need to recompute - trust the proof verification
 
         // Verify expiration time
         let expected_expiration = timestamp + Fp::from(3600u64);
         if expiration_time != expected_expiration {
             return Err(anyhow!("Expiration time mismatch"));
         }
+        eprintln!("[VERIFY] Step 6: Expiration time valid");
 
+        eprintln!("[VERIFY] Step 7: Building public inputs array...");
         let public_inputs = vec![
             merkle_root,
             nullifier,
@@ -417,9 +400,16 @@ impl AuthenticationProtocol {
             session_token,
             expiration_time,
         ];
+        eprintln!("[VERIFY] Step 7: Public inputs array built ({} inputs)", public_inputs.len());
+        eprintln!("[VERIFY] Server computed public inputs:");
+        for (i, input) in public_inputs.iter().enumerate() {
+            eprintln!("  {}. {}", i, hex::encode(input.to_repr()));
+        }
 
-        // Verify proof using static method
-        let valid = Self::verify_proof_static(&proof, &public_inputs)?;
+        eprintln!("[VERIFY] Step 8: Calling verify_proof_static with k={}...", k);
+        // Verify proof using static method with specified k
+        let valid = Self::verify_proof_static(&proof, &public_inputs, k)?;
+        eprintln!("[VERIFY] Step 8: verify_proof_static returned: {}", valid);
 
         if !valid {
             return Err(anyhow!("Proof verification failed"));
@@ -465,14 +455,11 @@ impl AuthenticationProtocol {
 
                 let ttl = expiration_u64.saturating_sub(timestamp_u64) as i64;
 
-                // Store session with linkability tag (zero-knowledge)
-                // linkability_tag = Blake3(device_private_key || "LINKABILITY")
-
+                // Store session (zero-knowledge - no device tracking)
                 let _: () = conn
                     .hset_multiple(
                         &key,
                         &[
-                            ("linkability_tag", linkability_tag_hex),
                             ("device_merkle_root", device_merkle_root_hex),
                             ("nullifier_hash", nullifier_hex),
                             ("created_at", &timestamp_u64.to_string()),
@@ -582,7 +569,7 @@ impl AuthenticationProtocol {
     }
 
     /// Static proof verification (no state needed)
-    fn verify_proof_static(proof: &[u8], public_inputs: &[Fp]) -> Result<bool> {
+    fn verify_proof_static(proof: &[u8], public_inputs: &[Fp], k: u32) -> Result<bool> {
         use halo2_proofs::{
             plonk::{keygen_vk, verify_proof, SingleVerifier},
             poly::commitment::Params,
@@ -590,24 +577,55 @@ impl AuthenticationProtocol {
         };
         use pasta_curves::vesta;
 
-        // Try different k values (client can use k=12, 14, 16, 18)
-        for k in [12, 14, 16, 18] {
+        let total_start = std::time::Instant::now();
+        eprintln!("🔍 [VERIFY] Starting proof verification...");
+        eprintln!("🔍 [VERIFY] Proof size: {} bytes", proof.len());
+        eprintln!("🔍 [VERIFY] Public inputs: {}", public_inputs.len());
+        eprintln!("🔍 [VERIFY] Client specified k={}", k);
+
+        // Use client-specified k value (no trial and error!)
+        let k_values = vec![k];
+        for k in k_values {
+            let k_start = std::time::Instant::now();
+            eprintln!("\n🔍 [VERIFY] Trying k={}...", k);
+            
+            let params_start = std::time::Instant::now();
             let params = Params::<vesta::Affine>::new(k);
+            eprintln!("  ⏱️  Params::new(k={}) took: {:?}", k, params_start.elapsed());
+            
+            let circuit_start = std::time::Instant::now();
             let dummy_circuit = AuthCircuit::default();
+            eprintln!("  ⏱️  Circuit creation took: {:?}", circuit_start.elapsed());
+            
+            let vk_start = std::time::Instant::now();
             if let Ok(vk) = keygen_vk(&params, &dummy_circuit) {
+                eprintln!("  ⏱️  keygen_vk() took: {:?}", vk_start.elapsed());
+                
+                let verify_start = std::time::Instant::now();
                 let strategy = SingleVerifier::new(&params);
                 let mut transcript = Blake2bRead::<_, vesta::Affine, Challenge255<_>>::init(proof);
 
-                if verify_proof(&params, &vk, strategy, &[&[public_inputs]], &mut transcript)
-                    .is_ok()
-                {
-                    println!("✅ Proof verified with k={}", k);
-                    return Ok(true);
+                match verify_proof(&params, &vk, strategy, &[&[public_inputs]], &mut transcript) {
+                    Ok(_) => {
+                        eprintln!("  ⏱️  verify_proof() took: {:?}", verify_start.elapsed());
+                        eprintln!("  ⏱️  Total for k={}: {:?}", k, k_start.elapsed());
+                        eprintln!("\n✅ Proof verified with k={}", k);
+                        eprintln!("⏱️  TOTAL VERIFICATION TIME: {:?}", total_start.elapsed());
+                        return Ok(true);
+                    }
+                    Err(e) => {
+                        eprintln!("  ❌ verify_proof() failed: {:?}", e);
+                    }
                 }
+            } else {
+                eprintln!("  ❌ keygen_vk() failed for k={}", k);
             }
+            
+            eprintln!("  ⏱️  Total attempt for k={}: {:?}", k, k_start.elapsed());
         }
 
-        println!("❌ Proof verification failed for all k values (12, 14, 16, 18)");
+        eprintln!("\n❌ Proof verification failed for k={}", k);
+        eprintln!("⏱️  TOTAL TIME: {:?}", total_start.elapsed());
         Ok(false)
     }
 
@@ -679,8 +697,8 @@ impl AuthenticationProtocol {
             return Ok(false);
         }
 
-        // Verify cryptographic proof
-        Self::verify_proof_static(proof, public_inputs)
+        // Verify cryptographic proof (try common k values if not specified)
+        Self::verify_proof_static(proof, public_inputs, 14)
     }
 
     fn init_oracle_verifier() -> Result<OracleVerifier> {

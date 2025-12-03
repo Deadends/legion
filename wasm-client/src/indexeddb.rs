@@ -55,6 +55,17 @@ impl IndexedDBCache {
         Ok(())
     }
 
+    pub async fn delete_params(&self, k: u32) -> Result<(), JsValue> {
+        let map_err = |e: idb::Error| JsValue::from_str(&e.to_string());
+
+        let tx = self.db.transaction(&[PARAMS_STORE_NAME], TransactionMode::ReadWrite).map_err(map_err)?;
+        let store = tx.object_store(PARAMS_STORE_NAME).map_err(map_err)?;
+        
+        let key = JsValue::from_str(&format!("legion_params_k{}", k));
+        store.delete(key).map_err(map_err)?.await.map_err(map_err)?;
+        Ok(())
+    }
+
     pub async fn clear_cache(&self) -> Result<(), JsValue> {
         let map_err = |e: idb::Error| JsValue::from_str(&e.to_string());
 
@@ -62,6 +73,36 @@ impl IndexedDBCache {
         let store = tx.object_store(PARAMS_STORE_NAME).map_err(map_err)?;
 
         store.clear().map_err(map_err)?.await.map_err(map_err)?;
+        Ok(())
+    }
+
+    // Generic get/set for tree storage
+    pub async fn get_item(&self, key: &str) -> Result<Option<String>, JsValue> {
+        let map_err = |e: idb::Error| JsValue::from_str(&e.to_string());
+
+        let tx = self.db.transaction(&[PARAMS_STORE_NAME], TransactionMode::ReadOnly).map_err(map_err)?;
+        let store = tx.object_store(PARAMS_STORE_NAME).map_err(map_err)?;
+        
+        let js_key = JsValue::from_str(key);
+        let value = store.get(js_key).map_err(map_err)?.await.map_err(map_err)?;
+        
+        if let Some(val) = value {
+            Ok(val.as_string())
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn set_item(&self, key: &str, value: &str) -> Result<(), JsValue> {
+        let map_err = |e: idb::Error| JsValue::from_str(&e.to_string());
+
+        let tx = self.db.transaction(&[PARAMS_STORE_NAME], TransactionMode::ReadWrite).map_err(map_err)?;
+        let store = tx.object_store(PARAMS_STORE_NAME).map_err(map_err)?;
+        
+        let js_key = JsValue::from_str(key);
+        let js_val = JsValue::from_str(value);
+
+        store.put(&js_val, Some(&js_key)).map_err(map_err)?.await.map_err(map_err)?;
         Ok(())
     }
 }
