@@ -66,15 +66,19 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         .map_err(|_| JsValue::from_str("No localStorage"))?
         .ok_or("No localStorage")?;
     
-    // Check if device is already registered
-    let (device_commitment_fp, device_position, ecdsa_pubkey_bytes_clone) = if let Some(stored_cred_id) = storage.get_item("legion_device_credential_id")
+    // Check if device is already registered FOR THIS USER
+    let user_key = hex::encode(username_hash.to_repr());
+    let device_key = format!("legion_device_{}_{}", &user_key[..16], "credential_id");
+    
+    let (device_commitment_fp, device_position, ecdsa_pubkey_bytes_clone) = if let Some(stored_cred_id) = storage.get_item(&device_key)
         .map_err(|_| JsValue::from_str("Storage read failed"))? {
         
-        console_log!("  ✓ Found existing device credential");
+        console_log!("  ✓ Found existing device credential for this user");
         console_log!("  → Credential ID: {}...", &stored_cred_id[..16]);
         
         // Retrieve stored device commitment
-        let stored_commitment = storage.get_item("legion_device_commitment")
+        let commitment_key = format!("legion_device_{}_{}", &user_key[..16], "commitment");
+        let stored_commitment = storage.get_item(&commitment_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .ok_or("No device commitment stored")?;
         
@@ -86,13 +90,15 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
             .ok_or_else(|| JsValue::from_str("Invalid device commitment"))?;
         
         // Retrieve stored device position (default to 0 if not set yet)
-        let device_position = storage.get_item("legion_device_position")
+        let position_key = format!("legion_device_{}_{}", &user_key[..16], "position");
+        let device_position = storage.get_item(&position_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);  // Will be set after device registration
         
         // Retrieve stored public key
-        let stored_pubkey = storage.get_item("legion_device_pubkey")
+        let pubkey_key = format!("legion_device_{}_{}", &user_key[..16], "pubkey");
+        let stored_pubkey = storage.get_item(&pubkey_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .ok_or("No device pubkey stored")?;
         let ecdsa_pubkey_bytes = general_purpose::STANDARD.decode(&stored_pubkey)
@@ -184,6 +190,7 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
 
         // CRITICAL: Compute PERSISTENT device commitment from credential ID
         // This ensures same device = same commitment across logins
+        // MUST be user-independent (only hardware-based)
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"LEGION_DEVICE_COMMITMENT_V1");
         hasher.update(&ecdsa_pubkey_bytes);
@@ -193,7 +200,7 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         let device_commitment_fp = Fp::from_uniform_bytes(&{
             let mut buf = [0u8; 64];
             buf[..32].copy_from_slice(commitment_hash.as_bytes());
-            buf[32..].copy_from_slice(&username_hash.to_repr()[..32]);
+            buf[32..].copy_from_slice(commitment_hash.as_bytes());  // FIX: Don't include username!
             buf
         });
         
@@ -201,12 +208,13 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         console_log!("  ✓ Private key secured in TPM/Secure Enclave (non-extractable)");
         console_log!("  ✓ Credential ID: {}...", &credential_id[..16]);
         
-        // Store credential ID and pubkey for future logins
-        storage.set_item("legion_device_credential_id", &credential_id)
+        // Store credential ID and pubkey for future logins (PER USER)
+        let user_key = hex::encode(username_hash.to_repr());
+        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "credential_id"), &credential_id)
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
-        storage.set_item("legion_device_pubkey", &general_purpose::STANDARD.encode(&ecdsa_pubkey_bytes))
+        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "pubkey"), &general_purpose::STANDARD.encode(&ecdsa_pubkey_bytes))
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
-        storage.set_item("legion_device_commitment", &hex::encode(device_commitment_fp.to_repr()))
+        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "commitment"), &hex::encode(device_commitment_fp.to_repr()))
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
         
         // Device position will be set after registration
@@ -418,7 +426,8 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         let cache_ref = cache.borrow();
         if let Some((cached_k, _)) = *cache_ref {
             if cached_k == k {
-                console_log!("  ✓ Using cached parameters (skipping generation)");
+                console_log!("  ✅ Using cached parameters (k={}) - INSTANT!", k);
+                console_log!("  ⚡ Skipping 30s params generation (already in memory)");
                 return false;
             }
         }
@@ -426,7 +435,9 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
     });
 
     if needs_generation {
-        console_log!("  ⏳ Generating fresh params (~10-30s, browser may freeze)...");
+        console_log!("  ⏳ Generating params for k={} (~30s, browser may freeze)...", k);
+        console_log!("  💡 This is a ONE-TIME cost per session");
+        console_log!("  💡 Subsequent logins will be INSTANT (cached in memory)");
         let pg_start = js_sys::Date::now();
         
         // CRITICAL: Generate OUTSIDE of RefCell borrow (Halo2 uses RefCell internally)
@@ -434,12 +445,17 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
             .map_err(|e| JsValue::from_str(&format!("ProofGenerator init failed: {}", e)))?;
         
         let pg_time = js_sys::Date::now() - pg_start;
-        console_log!("  ✓ Total setup time: {:.1}s", pg_time / 1000.0);
+        console_log!("  ✅ Params generated in {:.1}s", pg_time / 1000.0);
+        console_log!("  💾 Cached in memory for this session");
         
         // Store in cache AFTER generation completes
         CACHED_PROOF_GEN.with(|cache| {
             *cache.borrow_mut() = Some((k, generator));
         });
+        
+        // Mark in localStorage that params are cached (for UI feedback)
+        storage.set_item(&format!("legion_params_cached_k{}", k), "true")
+            .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
     }
 
     // Borrow the generator for use

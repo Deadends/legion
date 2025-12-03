@@ -347,7 +347,7 @@ impl AuthenticationProtocol {
 
         eprintln!("[VERIFY] Step 4: Validating timestamp...");
         // CRITICAL: Validate timestamp (prevent future/past attacks)
-        // Allow longer window for k=16 (4 min proof) and k=18 (15 min proof)
+        // Allow longer window for k=14 (14 min proof) and k=16 (4 min proof) and k=18 (15 min proof)
         let timestamp_bytes = timestamp.to_repr();
         let timestamp_u64 = u64::from_le_bytes(timestamp_bytes[..8].try_into().unwrap_or([0u8; 8]));
         let current_time = get_timestamp();
@@ -356,10 +356,10 @@ impl AuthenticationProtocol {
         } else {
             current_time - timestamp_u64
         };
-        // Allow 10 minutes for k=16/18 (proof generation takes 4-15 minutes)
-        if time_diff > 600 {
+        // Allow 20 minutes for k=14/16/18 (proof generation takes 4-15 minutes)
+        if time_diff > 1200 {
             return Err(anyhow!(
-                "Timestamp too far from current time (max 10 minutes)"
+                "Timestamp too far from current time (max 20 minutes)"
             ));
         }
         eprintln!("[VERIFY] Step 4: Timestamp valid (diff: {}s)", time_diff);

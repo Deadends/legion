@@ -106,6 +106,47 @@ python3 -m http.server 8000
 | **Production** | **16** | **~4min** | **3.5 KB** | **Recommended** |
 | High Security | 18 | ~15min | 4.0 KB | Enterprise |
 
+### Verification Benchmarks
+
+**Test Hardware:** Lenovo IdeaPad 3 - Intel Core i3 11th Gen  
+**Note:** Performance may vary based on hardware specifications.
+
+#### k=12 (Development/Testing)
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Proof Size** | 3,264 bytes | 3.19 KB compressed |
+| **Public Inputs** | 10 | Merkle root, nullifier, challenge, etc. |
+| **Params Generation** | 8.73s | One-time setup per k value |
+| **Circuit Creation** | 1.6µs | Negligible overhead |
+| **Verifying Key Gen** | 1.56s | One-time keygen |
+| **Proof Verification** | 118.2ms | Actual ZK proof check |
+| **Total Verification** | 10.42s | End-to-end (without caching) |
+
+**Breakdown:**
+- 🔥 **Cold start** (first verification): **~10.4s** (includes params + keygen + verification)
+- ⚡ **Subsequent verifications** (with caching): **~118ms** (params/keygen cached)
+- 💾 **Proof overhead**: **~33 bytes per public input**
+
+#### k=14 (Staging/Production)
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Proof Size** | 3,392 bytes | 3.31 KB compressed |
+| **Public Inputs** | 10 | Merkle root, nullifier, challenge, etc. |
+| **Params Generation** | 30.65s | One-time setup per k value |
+| **Circuit Creation** | 1.6µs | Negligible overhead |
+| **Verifying Key Gen** | 3.67s | One-time keygen |
+| **Proof Verification** | 247.7ms | Actual ZK proof check |
+| **Total Verification** | 34.57s | End-to-end (without caching) |
+
+**Breakdown:**
+- 🔥 **Cold start** (first verification): **~35s** (includes params + keygen + verification)
+- ⚡ **Subsequent verifications** (with caching): **~250ms** (params/keygen cached)
+- 💾 **Proof overhead**: **~33 bytes per public input**
+
+**Important:** Params generation and keygen are one-time costs that can be cached. Once cached, verification takes only ~118-250ms depending on k value. Current implementation does not cache params yet.
+
 ## 🏗️ Architecture
 
 **📖 For detailed step-by-step authentication flow with cryptographic details, see [ARCHITECTURE_FLOW.md](docs/ARCHITECTURE_FLOW.md)**
