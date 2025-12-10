@@ -18,8 +18,8 @@ services:
 
   legion-server:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: legion-server
     restart: always
     ports:
@@ -48,7 +48,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./wasm-client:/usr/share/nginx/html:ro
+      - ../wasm-client:/usr/share/nginx/html:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - legion-server

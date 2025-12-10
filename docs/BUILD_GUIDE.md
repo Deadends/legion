@@ -16,7 +16,7 @@ This is a known Podman/WSL stability issue on Windows.
 3. Build:
 
 ```bash
-docker build -t docker.io/deadends/legion-server:1.0.0 -t docker.io/deadends/legion-server:latest -f Dockerfile .
+docker build -t docker.io/deadends/legion-server:1.0.0 -t docker.io/deadends/legion-server:latest -f docker/Dockerfile .
 ```
 
 ### Push to Docker Hub
@@ -74,7 +74,7 @@ podman machine ssh "echo 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf"
 
 ### Build with No Cache
 ```bash
-podman build --no-cache --format docker -t docker.io/deadends/legion-server:latest -f Dockerfile .
+podman build --no-cache --format docker -t docker.io/deadends/legion-server:latest -f docker/Dockerfile .
 ```
 
 ---

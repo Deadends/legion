@@ -18,8 +18,8 @@ services:
 
   legion-backend:
     build:
-      context: .
-      dockerfile: Containerfile.local
+      context: ..
+      dockerfile: docker/Containerfile.local
     container_name: legion-backend
     depends_on:
       redis:

@@ -54,10 +54,10 @@ git clone https://github.com/deadends/legion.git
 cd legion
 
 # Linux/macOS
-chmod +x install.sh && ./install.sh
+chmod +x scripts/install.sh && ./scripts/install.sh
 
 # Windows
-install.bat
+scripts\install.bat
 ```
 
 **That's it!** Open http://localhost in your browser.
@@ -437,10 +437,10 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed production deployment guide
 
 ```bash
 # Production build
-docker-compose -f docker-compose.yml up -d
+docker-compose -f deployment/docker-compose.yml up -d
 
 # Check logs
-docker-compose logs -f legion-server
+docker-compose -f deployment/docker-compose.yml logs -f legion-server
 
 # Check health
 curl http://localhost/health
