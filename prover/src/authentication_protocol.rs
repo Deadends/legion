@@ -482,9 +482,29 @@ impl AuthenticationProtocol {
 
     fn hex_to_fp(hex: &str) -> Result<Fp> {
         let bytes = hex::decode(hex).map_err(|_| anyhow!("Invalid hex string"))?;
+        if bytes.len() != 32 {
+            return Err(anyhow!("Hex string must decode to exactly 32 bytes"));
+        }
         let mut repr = [0u8; 32];
         repr.copy_from_slice(&bytes);
-        Option::from(Fp::from_repr(repr)).ok_or_else(|| anyhow!("Invalid field element"))
+        
+        // Try direct conversion first
+        if let Some(fp) = Option::from(Fp::from_repr(repr)) {
+            return Ok(fp);
+        }
+        
+        // If not a valid field element, hash it with Blake3 and reduce
+        // This handles Blake3 outputs that are >= field modulus
+        use ff::FromUniformBytes;
+        let hash = blake3::hash(&bytes);
+        let hash_bytes = hash.as_bytes();
+        
+        // Extend to 64 bytes for uniform sampling
+        let mut uniform_bytes = [0u8; 64];
+        uniform_bytes[..32].copy_from_slice(hash_bytes);
+        uniform_bytes[32..].copy_from_slice(hash_bytes);
+        
+        Ok(Fp::from_uniform_bytes(&uniform_bytes))
     }
 
     pub fn is_user_registered(&self, user_leaf: Fp) -> bool {

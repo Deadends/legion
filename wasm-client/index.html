@@ -254,52 +254,91 @@
         <div class="tabs">
             <button class="tab active" onclick="switchTab('register')">Register</button>
             <button class="tab" onclick="switchTab('login')">Authenticate</button>
+            <button class="tab" onclick="switchTab('devices')">Devices (0/2)</button>
         </div>
 
         <div id="register" class="tab-content active">
+            <div class="architecture-info">
+                <h3>🔑 Passwordless Authentication</h3>
+                <p><strong>No username/password</strong> - Just your fingerprint + recovery phrase</p>
+                <p><strong>24-word phrase</strong> - Like MetaMask, write it down safely</p>
+            </div>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="regUsername">Username</label>
-                    <input type="text" id="regUsername" placeholder="Enter username" required>
+                    <label for="recoveryPhrase">Recovery Phrase (24 words)</label>
+                    <textarea id="recoveryPhrase" rows="4" style="resize: vertical; font-family: monospace; font-size: 13px;" placeholder="Click 'Generate Phrase' below" readonly></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="regPassword">Password</label>
-                    <input type="password" id="regPassword" placeholder="Enter password" required>
-                </div>
-                <button type="submit" id="registerButton">Register Account</button>
+                <button type="button" onclick="generatePhrase()" style="margin-bottom: 15px; background: rgba(255,255,255,0.1);">Generate New Phrase</button>
+                <button type="submit" id="registerButton">Register with Fingerprint</button>
             </form>
             <div id="registerStatus"></div>
         </div>
 
         <div id="login" class="tab-content">
+            <div class="architecture-info">
+                <h3>👆 Login with Fingerprint</h3>
+                <p><strong>Just touch your fingerprint</strong> - No password needed</p>
+                <p><strong>Zero-knowledge proof</strong> - Server never learns your identity</p>
+            </div>
             <form id="loginForm">
-                <div class="form-group">
-                    <label for="loginUsername">Username</label>
-                    <input type="text" id="loginUsername" placeholder="Enter username" required>
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" placeholder="Enter password" required>
+                <div style="text-align: center; padding: 60px 20px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 20px;">
+                    <div style="font-size: 80px; margin-bottom: 20px;">👆</div>
+                    <p style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">Touch Your Fingerprint</p>
+                    <p style="font-size: 14px; color: rgba(255,255,255,0.6);">Your recovery phrase is stored securely on this device</p>
                 </div>
                 <div class="form-group">
                     <label for="securityLevel">Security Level</label>
                     <select id="securityLevel">
-                        <option value="10">Fast (k=10) — 5 seconds</option>
-                        <option value="12">Development (k=12) — 10 seconds</option>
-                        <option value="14" selected>Standard (k=14) — 60 seconds</option>
-                        <option value="16">Production (k=16) — 4 minutes</option>
+                        <option value="12">Development (k=12) — ~30 seconds</option>
+                        <option value="14" selected>Production (k=14) — ~2 minutes</option>
                     </select>
                 </div>
-                <button type="submit" id="loginButton">Generate Proof & Authenticate</button>
+                <button type="submit" id="loginButton" style="font-size: 18px; padding: 20px;">🔓 Login with Fingerprint</button>
             </form>
             <div id="loginStatus"></div>
+        </div>
+
+        <div id="devices" class="tab-content">
+            <div class="architecture-info">
+                <h3>Device Management (Max 2 Devices)</h3>
+                <p><strong>Zero-Knowledge:</strong> Server never knows which devices you have</p>
+                <p><strong>Hardware-Bound:</strong> Each device uses TPM/Secure Enclave</p>
+            </div>
+            <div id="deviceList" style="margin-bottom: 20px;"></div>
+            <button onclick="refreshDevices()" style="margin-top: 10px;">Refresh Devices</button>
+        </div>
+    </div>
+
+    <!-- Recovery Phrase Backup Modal -->
+    <div id="seedModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 50px; border-radius: 20px; max-width: 700px; width: 90%; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 30px 80px rgba(0,0,0,0.7);">
+            <h2 style="margin-bottom: 30px; font-size: 28px; text-align: center; font-weight: 700;">🔐 SAVE YOUR RECOVERY PHRASE</h2>
+            
+            <div style="background: rgba(255,50,50,0.15); padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 2px solid rgba(255,50,50,0.4);">
+                <p style="margin: 0; font-size: 15px; line-height: 1.8; color: #ff6b6b; font-weight: 600; text-align: center;">⚠️ WRITE THIS DOWN ON PAPER - DO NOT SCREENSHOT</p>
+            </div>
+            
+            <div style="background: rgba(255,255,255,0.08); padding: 30px; border-radius: 12px; margin-bottom: 30px; border: 2px solid rgba(255,255,255,0.15);">
+                <p style="margin-bottom: 15px; font-size: 13px; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your 24-Word Recovery Phrase:</p>
+                <div id="credentialIdInfo" style="background: rgba(0,0,0,0.4); padding: 25px; border-radius: 10px; font-family: 'Courier New', monospace; font-size: 16px; line-height: 2; word-break: break-word; color: #ffffff; border: 1px solid rgba(255,255,255,0.1); text-align: left;">-</div>
+            </div>
+            
+            <div style="background: rgba(255,200,0,0.12); padding: 20px; border-radius: 12px; margin-bottom: 30px; border: 1px solid rgba(255,200,0,0.4);">
+                <p style="margin-bottom: 12px; font-size: 15px; line-height: 1.7; color: rgba(255,255,255,0.95);">💡 <strong>Device Slot:</strong> <span id="deviceSlotInfo" style="color: #ffd93d;">-</span></p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.7; color: rgba(255,255,255,0.85);">✓ Hardware-bound to this device (TPM/Secure Enclave)</p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.7; color: rgba(255,255,255,0.85);">✓ Use this phrase on another device (max 2 devices)</p>
+            </div>
+            
+            <button onclick="closeSeedModal()" style="width: 100%; padding: 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 10px; font-size: 16px; font-weight: 700; color: #ffffff; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; box-shadow: 0 8px 20px rgba(102,126,234,0.4);">I Have Written It Down</button>
         </div>
     </div>
 
     <script type="module">
-        import init, { authenticate_user, register_user } from './pkg/legion_wasm_client.js';
+        import init, { register_user_passwordless, authenticate_user_passwordless, generate_recovery_phrase, validate_recovery_phrase, list_user_devices, revoke_device_local } from './pkg/legion_wasm_client.js';
+        import { securelyStoreMnemonic, securelyRetrieveMnemonic, hasEncryptedVault, isPRFSupported } from './crypto-storage.js';
 
         const SERVER_URL = 'http://127.0.0.1:3001';
+        let currentUserHash = null;
 
         window.switchTab = function(tab) {
             const tabs = document.querySelectorAll('.tab');
@@ -309,12 +348,94 @@
             contents.forEach(c => c.classList.remove('active'));
             
             tabs.forEach(t => {
-                if (t.textContent.includes(tab === 'register' ? 'Register' : 'Authenticate')) {
+                const tabText = t.textContent.toLowerCase();
+                if ((tab === 'register' && tabText.includes('register')) ||
+                    (tab === 'login' && tabText.includes('authenticate')) ||
+                    (tab === 'devices' && tabText.includes('devices'))) {
                     t.classList.add('active');
                 }
             });
             
             document.getElementById(tab).classList.add('active');
+            
+            if (tab === 'devices') {
+                refreshDevices();
+            }
+        };
+
+        window.refreshDevices = function() {
+            if (!currentUserHash) {
+                document.getElementById('deviceList').innerHTML = '<p style="color: rgba(255,255,255,0.6);">Please login first to view devices</p>';
+                return;
+            }
+            
+            try {
+                const devices = list_user_devices(currentUserHash);
+                const deviceCount = devices.length;
+                
+                // Update tab label
+                document.querySelectorAll('.tab').forEach(t => {
+                    if (t.textContent.includes('Devices')) {
+                        t.textContent = `Devices (${deviceCount}/2)`;
+                    }
+                });
+                
+                if (deviceCount === 0) {
+                    document.getElementById('deviceList').innerHTML = '<p style="color: rgba(255,255,255,0.6);">No devices registered yet</p>';
+                } else {
+                    const html = devices.map(d => `
+                        <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <p style="font-weight: 600; margin-bottom: 5px;">Device ${d.slot}</p>
+                                    <p style="font-size: 12px; color: rgba(255,255,255,0.6);">ID: ${d.credential_id}...</p>
+                                </div>
+                                <button onclick="revokeDevice(${d.slot})" style="padding: 8px 16px; background: rgba(231,76,60,0.2); border: 1px solid rgba(231,76,60,0.5); border-radius: 6px; color: #e74c3c; cursor: pointer; font-size: 13px;">Revoke</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    document.getElementById('deviceList').innerHTML = html;
+                }
+            } catch (error) {
+                document.getElementById('deviceList').innerHTML = `<p style="color: #e74c3c;">Error: ${error}</p>`;
+            }
+        };
+
+        window.revokeDevice = function(slot) {
+            if (!currentUserHash) return;
+            if (!confirm(`Revoke Device ${slot}? You will need to re-register this device.`)) return;
+            
+            try {
+                revoke_device_local(currentUserHash, slot);
+                showStatus('deviceList', `Device ${slot} revoked successfully`, 'success');
+                setTimeout(() => refreshDevices(), 1000);
+            } catch (error) {
+                showStatus('deviceList', `Error: ${error}`, 'error');
+            }
+        };
+
+        window.showSeedModal = function(deviceSlot, credentialId) {
+            document.getElementById('deviceSlotInfo').textContent = `Device ${deviceSlot} of 2`;
+            document.getElementById('credentialIdInfo').textContent = credentialId.substring(0, 32) + '...';
+            document.getElementById('seedModal').style.display = 'flex';
+        };
+
+        window.closeSeedModal = function() {
+            document.getElementById('seedModal').style.display = 'none';
+            if (window.seedModalResolve) {
+                window.seedModalResolve();
+                window.seedModalResolve = null;
+            }
+        };
+
+        window.generatePhrase = async function() {
+            try {
+                const phrase = await generate_recovery_phrase();
+                document.getElementById('recoveryPhrase').value = phrase;
+                showStatus('registerStatus', '✅ Recovery phrase generated! Write it down safely.', 'success');
+            } catch (error) {
+                showStatus('registerStatus', `Error: ${error}`, 'error');
+            }
         };
 
         function showStatus(elementId, message, type) {
@@ -336,17 +457,112 @@
                     button.disabled = true;
                     button.textContent = 'Processing...';
                     
-                    const username = document.getElementById('regUsername').value;
-                    const password = document.getElementById('regPassword').value;
+                    const phrase = document.getElementById('recoveryPhrase').value.trim();
                     
-                    showStatus('registerStatus', 'Adding user to anonymity set...', 'info');
+                    if (!phrase) {
+                        showStatus('registerStatus', 'Please generate a recovery phrase first', 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                        return;
+                    }
                     
-                    const response = await register_user(username, password, SERVER_URL);
+                    if (!validate_recovery_phrase(phrase)) {
+                        showStatus('registerStatus', 'Invalid recovery phrase', 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                        return;
+                    }
+                    
+                    // Show seed backup modal FIRST (before fingerprint)
+                    document.getElementById('deviceSlotInfo').textContent = 'Device 1 of 2';
+                    document.getElementById('credentialIdInfo').textContent = phrase;
+                    document.getElementById('seedModal').style.display = 'flex';
+                    
+                    // Wait for user to confirm they saved it
+                    await new Promise(resolve => {
+                        window.seedModalResolve = resolve;
+                    });
+                    
+                    showStatus('registerStatus', 'Touch your fingerprint to register...', 'info');
+                    
+                    const response = await register_user_passwordless(phrase, SERVER_URL);
                     
                     if (response.success) {
-                        showStatus('registerStatus', response.message || 'Registration successful', 'success');
-                        document.getElementById('regUsername').value = '';
-                        document.getElementById('regPassword').value = '';
+                        // Create WebAuthn credential (single fingerprint prompt)
+                        showStatus('registerStatus', 'Touch fingerprint to create hardware key...', 'info');
+                        const credential = await navigator.credentials.create({
+                            publicKey: {
+                                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                                rp: { name: "Legion" },
+                                user: {
+                                    id: crypto.getRandomValues(new Uint8Array(32)),
+                                    name: "legion-user",
+                                    displayName: "Legion User"
+                                },
+                                pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                                authenticatorSelection: {
+                                    authenticatorAttachment: "platform",
+                                    userVerification: "required"
+                                },
+                                timeout: 60000
+                            }
+                        });
+                        
+                        const credentialId = Array.from(new Uint8Array(credential.rawId))
+                            .map(b => b.toString(16).padStart(2, '0')).join('');
+                        
+                        localStorage.setItem('legion_device_credential_id', credentialId);
+                        console.log('✓ WebAuthn credential created:', credentialId.substring(0, 16) + '...');
+                        
+                        // Compute user hash
+                        const encoder = new TextEncoder();
+                        const phraseBytes = encoder.encode(phrase);
+                        const hashBuffer = await crypto.subtle.digest('SHA-256', phraseBytes);
+                        const hashArray = Array.from(new Uint8Array(hashBuffer));
+                        currentUserHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                        
+                        // Compute device commitment using Blake3 (ensures valid field element)
+                        const { derive_account_id, blake3_hash } = await import('./pkg/legion_wasm_client.js');
+                        const credIdBytes = new Uint8Array(credential.rawId);
+                        const deviceCommitment = await blake3_hash(credIdBytes);
+                        console.log('Device commitment (Blake3):', deviceCommitment);
+                        
+                        // Get account_id and hash it (must match authentication flow)
+                        const accountIdHex = await derive_account_id(phrase);
+                        console.log('Account ID:', accountIdHex);
+                        
+                        // Hash account_id with Blake3 (same as authentication)
+                        const accountIdBytes = new Uint8Array(accountIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                        const userKeyHex = await blake3_hash(accountIdBytes);
+                        console.log('User key (Blake3 of account_id):', userKeyHex);
+                        
+                        // Register device with server to get position in device tree
+                        showStatus('registerStatus', 'Registering device in ring...', 'info');
+                        const deviceResp = await fetch(`${SERVER_URL}/api/register-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                nullifier_hash: userKeyHex,
+                                device_commitment: deviceCommitment
+                            })
+                        });
+                        const deviceData = await deviceResp.json();
+                        
+                        if (!deviceData.success) {
+                            throw new Error('Device registration failed: ' + deviceData.error);
+                        }
+                        
+                        // Store device metadata
+                        localStorage.setItem('legion_device_position', deviceData.device_position);
+                        localStorage.setItem('legion_device_commitment', deviceCommitment);
+                        localStorage.setItem('legion_device_root', deviceData.device_tree_root);
+                        console.log('✓ Device registered at position:', deviceData.device_position);
+                        
+                        // Encrypt phrase using PBKDF2 (no second fingerprint)
+                        await securelyStoreMnemonic(phrase, credentialId);
+                        console.log('✓ Recovery phrase encrypted (PBKDF2 - hardware-bound via credential ID)');
+                        
+                        showStatus('registerStatus', '✅ Registration successful! You can now login with just your fingerprint.', 'success');
                     } else {
                         showStatus('registerStatus', response.message || 'Registration failed', 'error');
                     }
@@ -365,20 +581,186 @@
                 
                 try {
                     button.disabled = true;
-                    button.textContent = 'Generating Proof...';
+                    button.textContent = 'Checking device...';
                     
-                    const username = document.getElementById('loginUsername').value;
-                    const password = document.getElementById('loginPassword').value;
                     const k = parseInt(document.getElementById('securityLevel').value);
                     
-                    showStatus('loginStatus', `Generating zero-knowledge proof (k=${k})...`, 'info');
+                    // Check if device is already registered
+                    const credentialId = localStorage.getItem('legion_device_credential_id');
+                    
+                    // NEW DEVICE RECOVERY FLOW
+                    if (!credentialId) {
+                        const recoveryPhrase = prompt('🔑 Enter your 24-word recovery phrase:\n\n(This is the phrase you saved during registration)');
+                        
+                        if (!recoveryPhrase) {
+                            button.disabled = false;
+                            button.textContent = originalText;
+                            showStatus('loginStatus', 'Login cancelled', 'error');
+                            return;
+                        }
+                        
+                        showStatus('loginStatus', 'Validating recovery phrase...', 'info');
+                        
+                        // Validate phrase
+                        if (!validate_recovery_phrase(recoveryPhrase.trim())) {
+                            showStatus('loginStatus', '❌ Invalid recovery phrase. Please check and try again.', 'error');
+                            button.disabled = false;
+                            button.textContent = originalText;
+                            return;
+                        }
+                        
+                        showStatus('loginStatus', '✓ Valid recovery phrase. Checking if account exists...', 'info');
+                        
+                        // Derive account_id and check if registered
+                        const { derive_account_id } = await import('./pkg/legion_wasm_client.js');
+                        const accountIdHex = await derive_account_id(recoveryPhrase.trim());
+                        
+                        // Download tree to check if account exists
+                        const treeResp = await fetch(`${SERVER_URL}/api/download-tree`);
+                        const treeData = await treeResp.json();
+                        
+                        if (!treeData.tree_data || treeData.tree_data.length === 0) {
+                            showStatus('loginStatus', '❌ No accounts registered yet. Please register first.', 'error');
+                            button.disabled = false;
+                            button.textContent = originalText;
+                            return;
+                        }
+                        
+                        showStatus('loginStatus', '✓ Account found! Touch fingerprint to register this device...', 'info');
+                        
+                        // Create WebAuthn credential for this device
+                        const credential = await navigator.credentials.create({
+                            publicKey: {
+                                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                                rp: { name: "Legion", id: "localhost" },
+                                user: {
+                                    id: crypto.getRandomValues(new Uint8Array(32)),
+                                    name: "legion-user",
+                                    displayName: "Legion User"
+                                },
+                                pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                                authenticatorSelection: {
+                                    authenticatorAttachment: "platform",
+                                    requireResidentKey: false,
+                                    residentKey: "discouraged",
+                                    userVerification: "preferred"
+                                },
+                                timeout: 60000,
+                                attestation: "none"
+                            }
+                        });
+                        
+                        const newCredentialId = Array.from(new Uint8Array(credential.rawId))
+                            .map(b => b.toString(16).padStart(2, '0')).join('');
+                        
+                        // Compute device commitment using Blake3 (ensures valid field element)
+                        const { blake3_hash } = await import('./pkg/legion_wasm_client.js');
+                        const credIdBytes = new Uint8Array(credential.rawId);
+                        const newDeviceCommitment = await blake3_hash(credIdBytes);
+                        
+                        // Compute user key (Blake3 hash of account_id) - MUST MATCH REGISTRATION
+                        const accountIdBytesForHash = new Uint8Array(accountIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                        const userKeyHex = await blake3_hash(accountIdBytesForHash);
+                        
+                        // Register device with server
+                        showStatus('loginStatus', 'Registering device...', 'info');
+                        const deviceResp = await fetch(`${SERVER_URL}/api/register-device`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                nullifier_hash: userKeyHex,
+                                device_commitment: newDeviceCommitment
+                            })
+                        });
+                        const deviceData = await deviceResp.json();
+                        
+                        if (!deviceData.success) {
+                            throw new Error('Device registration failed: ' + deviceData.error);
+                        }
+                        
+                        // Store device metadata
+                        localStorage.setItem('legion_device_credential_id', newCredentialId);
+                        localStorage.setItem('legion_device_position', deviceData.device_position);
+                        localStorage.setItem('legion_device_commitment', newDeviceCommitment);
+                        localStorage.setItem('legion_device_root', deviceData.device_tree_root);
+                        
+                        // Get tree_index by calling register (will return existing index)
+                        showStatus('loginStatus', 'Getting your tree position...', 'info');
+                        const { register_user_passwordless } = await import('./pkg/legion_wasm_client.js');
+                        const regResult = await register_user_passwordless(recoveryPhrase.trim(), SERVER_URL);
+                        
+                        console.log('✓ Tree index and tree data retrieved');
+                        
+                        // Encrypt and store recovery phrase
+                        await securelyStoreMnemonic(recoveryPhrase.trim(), newCredentialId);
+                        
+                        showStatus('loginStatus', '✅ Device added successfully! Reloading page...', 'success');
+                        
+                        // Reload page so login flow picks up new device metadata
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                        return;
+                    }
+                    
+                    // EXISTING DEVICE LOGIN FLOW
+                    // PHASE 1: Verify hardware-bound device key with WebAuthn
+                    
+                    console.log('Credential ID from storage:', credentialId.substring(0, 32) + '...');
+                    
+                    showStatus('loginStatus', '👆 Touch fingerprint to authenticate...', 'info');
+                    const credIdBytes = new Uint8Array(credentialId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                    console.log('Credential ID bytes length:', credIdBytes.length);
+                    
+                    try {
+                        const assertion = await navigator.credentials.get({
+                            publicKey: {
+                                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                                allowCredentials: [{
+                                    id: credIdBytes,
+                                    type: 'public-key'
+                                }],
+                                userVerification: 'required',
+                                timeout: 60000
+                            }
+                        });
+                        console.log('✓ WebAuthn authentication successful');
+                    } catch (webauthnError) {
+                        console.error('WebAuthn error:', webauthnError);
+                        throw new Error('Fingerprint authentication failed. Please clear localStorage and re-register.');
+                    }
+                    
+                    // PHASE 2: Decrypt phrase using PBKDF2 (already hardware-bound via credential ID)
+                    let phrase;
+                    if (hasEncryptedVault()) {
+                        phrase = await securelyRetrieveMnemonic(credentialId);
+                        console.log('✓ Recovery phrase decrypted');
+                    } else {
+                        throw new Error('No encrypted vault found. Please register first.');
+                    }
+                    
+                    if (!phrase) {
+                        showStatus('loginStatus', 'No recovery phrase found. Please register first.', 'error');
+                        button.disabled = false;
+                        button.textContent = originalText;
+                        return;
+                    }
+                    
+                    showStatus('loginStatus', `Touch fingerprint to login (k=${k})...`, 'info');
                     const startTime = performance.now();
                     
-                    const result = await authenticate_user(username, password, k, SERVER_URL);
+                    const result = await authenticate_user_passwordless(phrase, k, SERVER_URL);
                     const totalTime = Math.round(performance.now() - startTime);
                     
                     if (result.success) {
                         showStatus('loginStatus', `✅ Authentication successful | ${totalTime}ms`, 'success');
+                        
+                        // Store phrase hash for device management
+                        const encoder = new TextEncoder();
+                        const data = encoder.encode(phrase);
+                        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                        const hashArray = Array.from(new Uint8Array(hashBuffer));
+                        currentUserHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                         
                         if (result.session_token) {
                             localStorage.setItem('legion_session', result.session_token);

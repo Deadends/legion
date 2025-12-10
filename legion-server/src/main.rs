@@ -550,6 +550,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/login", post(authenticate_user))
         .route("/api/register-blind", post(register_blind))
         .route("/api/download-tree", get(download_merkle_tree))
+        .route("/api/register-device", post(register_device))
+        .route("/api/get-device-proof", post(get_device_proof))
         .route("/api/verify-anonymous-proof", post(verify_anonymous_proof))
         .route("/api/webauthn/register/start", post(start_webauthn_registration))
         .route("/api/webauthn/register/finish", post(finish_webauthn_registration))

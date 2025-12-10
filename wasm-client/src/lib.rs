@@ -3,10 +3,16 @@ use serde::Deserialize;
 use base64::{Engine as _, engine::general_purpose};
 
 mod indexeddb;
-use indexeddb::IndexedDBCache;
 
 mod local_tree;
-use local_tree::{download_and_cache_tree, compute_merkle_path_sync, load_cached_tree};
+use local_tree::compute_merkle_path_sync;
+
+mod device_manager;
+use device_manager::{count_user_devices, get_next_device_slot, detect_current_device};
+
+mod passwordless;
+use passwordless::derive_account_id_fp;
+pub use passwordless::{generate_recovery_phrase, validate_recovery_phrase, derive_account_id};
 
 
 #[wasm_bindgen]
@@ -66,18 +72,31 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         .map_err(|_| JsValue::from_str("No localStorage"))?
         .ok_or("No localStorage")?;
     
-    // Check if device is already registered FOR THIS USER
+    // Check if device is already registered FOR THIS USER (supports 2 devices)
     let user_key = hex::encode(username_hash.to_repr());
-    let device_key = format!("legion_device_{}_{}", &user_key[..16], "credential_id");
     
-    let (device_commitment_fp, device_position, ecdsa_pubkey_bytes_clone) = if let Some(stored_cred_id) = storage.get_item(&device_key)
-        .map_err(|_| JsValue::from_str("Storage read failed"))? {
+    // Detect current device (device_1 or device_2)
+    let device_key_result = detect_current_device(&storage, &user_key);
+    
+    let (device_commitment_fp, device_position, ecdsa_pubkey_bytes_clone) = if let Ok(device_key) = device_key_result {
+        let stored_cred_id = storage.get_item(&device_key)
+            .map_err(|_| JsValue::from_str("Storage read failed"))?
+            .ok_or("Device key exists but no credential found")?;
         
         console_log!("  ✓ Found existing device credential for this user");
         console_log!("  → Credential ID: {}...", &stored_cred_id[..16]);
         
+        // Extract device slot from key (e.g., "legion_device_xxx_1_credential_id" -> slot 1)
+        let device_slot = device_key.chars()
+            .rev()
+            .skip("_credential_id".len())
+            .take(1)
+            .collect::<String>()
+            .parse::<u8>()
+            .unwrap_or(1);
+        
         // Retrieve stored device commitment
-        let commitment_key = format!("legion_device_{}_{}", &user_key[..16], "commitment");
+        let commitment_key = format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "commitment");
         let stored_commitment = storage.get_item(&commitment_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .ok_or("No device commitment stored")?;
@@ -90,26 +109,34 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
             .ok_or_else(|| JsValue::from_str("Invalid device commitment"))?;
         
         // Retrieve stored device position (default to 0 if not set yet)
-        let position_key = format!("legion_device_{}_{}", &user_key[..16], "position");
+        let position_key = format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "position");
         let device_position = storage.get_item(&position_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);  // Will be set after device registration
         
         // Retrieve stored public key
-        let pubkey_key = format!("legion_device_{}_{}", &user_key[..16], "pubkey");
+        let pubkey_key = format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "pubkey");
         let stored_pubkey = storage.get_item(&pubkey_key)
             .map_err(|_| JsValue::from_str("Storage read failed"))?
             .ok_or("No device pubkey stored")?;
         let ecdsa_pubkey_bytes = general_purpose::STANDARD.decode(&stored_pubkey)
             .map_err(|_| JsValue::from_str("Invalid pubkey base64"))?;
         
+        console_log!("  ✓ Device slot: {} (zero-knowledge)", device_slot);
         console_log!("  ✓ Device commitment: {}...", &stored_commitment[..16]);
         console_log!("  ✓ Device position: {}", device_position);
         
         (device_commitment_fp, device_position, ecdsa_pubkey_bytes)
     } else {
         console_log!("  ⚠️  No existing credential - creating new device...");
+        
+        // Check device limit (max 2 devices per user)
+        let device_count = count_user_devices(&storage, &user_key)?;
+        if device_count >= 2 {
+            return Err(JsValue::from_str("❌ Maximum 2 devices per user. Please revoke a device first."));
+        }
+        console_log!("  ✓ Device limit check passed ({}/2 devices)", device_count);
         
         // Always use localhost for WebAuthn RP ID
         let rp_id = "localhost";
@@ -208,14 +235,18 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         console_log!("  ✓ Private key secured in TPM/Secure Enclave (non-extractable)");
         console_log!("  ✓ Credential ID: {}...", &credential_id[..16]);
         
-        // Store credential ID and pubkey for future logins (PER USER)
+        // Store credential ID and pubkey for future logins (PER USER, max 2 devices)
         let user_key = hex::encode(username_hash.to_repr());
-        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "credential_id"), &credential_id)
+        let device_slot = get_next_device_slot(&storage, &user_key)?;
+        
+        storage.set_item(&format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "credential_id"), &credential_id)
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
-        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "pubkey"), &general_purpose::STANDARD.encode(&ecdsa_pubkey_bytes))
+        storage.set_item(&format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "pubkey"), &general_purpose::STANDARD.encode(&ecdsa_pubkey_bytes))
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
-        storage.set_item(&format!("legion_device_{}_{}", &user_key[..16], "commitment"), &hex::encode(device_commitment_fp.to_repr()))
+        storage.set_item(&format!("legion_device_{}_{}_{}", &user_key[..16], device_slot, "commitment"), &hex::encode(device_commitment_fp.to_repr()))
             .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
+        
+        console_log!("  ✓ Device registered in slot {} (zero-knowledge)", device_slot);
         
         // Device position will be set after registration
         (device_commitment_fp, 0, ecdsa_pubkey_bytes)
@@ -380,9 +411,13 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
     let device_merkle_root_fp = current_device_node;
     console_log!("  ✓ Computed device root: {}...", &hex::encode(device_merkle_root_fp.to_repr())[..16]);
     
+    // OLD USERNAME/PASSWORD AUTH: Combine into single account_id for new circuit
+    // This maintains backward compatibility with old registrations
+    let combined_account_id = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<2>, 3, 2>::init()
+        .hash([username_hash, password_hash]);
+    
     let circuit = AuthCircuit::new(
-        username_hash,
-        password_hash,
+        combined_account_id,  // Combined for backward compatibility
         user_leaf,
         merkle_path,
         path_resp.position as u64,
@@ -394,7 +429,7 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
         device_merkle_path,
         device_position as u64,
         device_merkle_root_fp,
-        linkability_tag_fp,  // NEW: Pass linkability tag to circuit
+        linkability_tag_fp,
     )
     .map_err(|e| JsValue::from_str(&format!("Circuit creation failed: {}", e)))?;
     
@@ -558,7 +593,388 @@ pub async fn authenticate_user(username: String, password: String, k: u32, serve
     Ok(result_json)
 }
 
-// BLIND REGISTRATION: Client hashes credentials, server never sees raw data
+// PASSWORDLESS REGISTRATION: BIP-39 recovery phrase
+#[wasm_bindgen]
+pub async fn register_user_passwordless(phrase: String, server_url: String) -> Result<JsValue, JsValue> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+    use legion_prover::halo2_gadgets;
+    use halo2_gadgets::poseidon::primitives as poseidon;
+    use ff::PrimeField;
+    
+    console_log!("Deriving account from recovery phrase...");
+    
+    let account_id = derive_account_id_fp(&phrase)?;
+    
+    // Compute leaf: Just Poseidon(account_id) - MUCH SIMPLER!
+    let user_leaf = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<1>, 3, 2>::init()
+        .hash([account_id]);
+    
+    console_log!("Sending only leaf hash to server (blind registration)");
+    
+    let url = format!("{}/api/register-blind", server_url);
+    let body = serde_json::json!({
+        "user_leaf": hex::encode(user_leaf.to_repr())
+    });
+    
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+    opts.set_body(&JsValue::from_str(&body.to_string()));
+    
+    let request = Request::new_with_str_and_init(&url, &opts)
+        .map_err(|e| JsValue::from_str(&format!("Request failed: {:?}", e)))?;
+    
+    request.headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| JsValue::from_str(&format!("Header failed: {:?}", e)))?;
+    
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(
+        window.fetch_with_request(&request)
+    ).await.map_err(|e| JsValue::from_str(&format!("Fetch failed: {:?}", e)))?;
+    
+    let resp: Response = resp_value.dyn_into()
+        .map_err(|_| JsValue::from_str("Response cast failed"))?;
+    
+    let json = wasm_bindgen_futures::JsFuture::from(
+        resp.json().map_err(|e| JsValue::from_str(&format!("JSON failed: {:?}", e)))?
+    ).await.map_err(|e| JsValue::from_str(&format!("JSON future failed: {:?}", e)))?;
+    
+    #[derive(Deserialize)]
+    struct RegResponse {
+        success: bool,
+        user_leaf: String,
+    }
+    
+    if let Ok(reg_resp) = serde_wasm_bindgen::from_value::<RegResponse>(json.clone()) {
+        if reg_resp.success && reg_resp.user_leaf.starts_with("tree_index=") {
+            if let Some(idx_str) = reg_resp.user_leaf.strip_prefix("tree_index=") {
+                let storage = window.local_storage()
+                    .map_err(|_| JsValue::from_str("No localStorage"))?
+                    .ok_or("No localStorage")?;
+                storage.set_item("legion_tree_index", idx_str)
+                    .map_err(|_| JsValue::from_str("Failed to store tree_index"))?;
+                console_log!("✓ Stored tree_index={}", idx_str);
+                
+                // Download tree
+                let tree_url = format!("{}/api/download-tree", server_url);
+                let tree_opts = web_sys::RequestInit::new();
+                tree_opts.set_method("GET");
+                tree_opts.set_mode(web_sys::RequestMode::Cors);
+                
+                let tree_req = web_sys::Request::new_with_str_and_init(&tree_url, &tree_opts)
+                    .map_err(|e| JsValue::from_str(&format!("Request failed: {:?}", e)))?;
+                
+                let tree_resp_value = wasm_bindgen_futures::JsFuture::from(
+                    window.fetch_with_request(&tree_req)
+                ).await.map_err(|e| JsValue::from_str(&format!("Fetch failed: {:?}", e)))?;
+                
+                let tree_resp: web_sys::Response = tree_resp_value.dyn_into()
+                    .map_err(|_| JsValue::from_str("Response cast failed"))?;
+                
+                let tree_json_val = wasm_bindgen_futures::JsFuture::from(
+                    tree_resp.json().map_err(|e| JsValue::from_str(&format!("JSON failed: {:?}", e)))?
+                ).await.map_err(|e| JsValue::from_str(&format!("JSON future failed: {:?}", e)))?;
+                
+                #[derive(Deserialize)]
+                struct TreeResp {
+                    tree_data: Vec<String>,
+                }
+                
+                let tree_data: TreeResp = serde_wasm_bindgen::from_value(tree_json_val)
+                    .map_err(|e| JsValue::from_str(&format!("Deserialize failed: {}", e)))?;
+                
+                let tree_json_str = serde_json::to_string(&tree_data.tree_data)
+                    .map_err(|e| JsValue::from_str(&format!("JSON serialize failed: {}", e)))?;
+                
+                storage.set_item("legion_merkle_tree", &tree_json_str)
+                    .map_err(|_| JsValue::from_str("Failed to store tree"))?;
+                
+                console_log!("✓ Tree stored ({} leaves)", tree_data.tree_data.len());
+            }
+        }
+    }
+    
+    Ok(json)
+}
+
+// PASSWORDLESS AUTHENTICATION: BIP-39 recovery phrase
+#[wasm_bindgen]
+pub async fn authenticate_user_passwordless(phrase: String, k: u32, server_url: String) -> Result<JsValue, JsValue> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+    use legion_prover::{auth_circuit::AuthCircuit, proof_generator::ProofGenerator, Fp, halo2_gadgets};
+    use halo2_gadgets::poseidon::primitives as poseidon;
+    use ff::{PrimeField, FromUniformBytes};
+    
+    console_log!("🔐 PASSWORDLESS AUTHENTICATION STARTED");
+    console_log!("Deriving account from recovery phrase...");
+    
+    let account_id = derive_account_id_fp(&phrase)?;
+    let user_leaf = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<1>, 3, 2>::init()
+        .hash([account_id]);
+    
+    console_log!("✓ Account derived");
+    console_log!("Loading device credential from storage...");
+    
+    let window = web_sys::window().ok_or("No window")?;
+    let storage = window.local_storage()
+        .map_err(|_| JsValue::from_str("No localStorage"))?
+        .ok_or("No localStorage")?;
+    
+    // Get device metadata from localStorage
+    let device_position_str = storage.get_item("legion_device_position")
+        .map_err(|_| JsValue::from_str("Storage read failed"))?
+        .ok_or_else(|| JsValue::from_str("❌ Device not registered on this browser. Please:\n1. Use the same browser where you registered\n2. Don't clear browser data (localStorage)\n3. Or re-register this device with your recovery phrase"))?;
+    let device_position = device_position_str.parse::<usize>()
+        .map_err(|_| JsValue::from_str("Invalid device position"))?;
+    
+    let device_commitment_hex = storage.get_item("legion_device_commitment")
+        .map_err(|_| JsValue::from_str("Storage read failed"))?
+        .ok_or_else(|| JsValue::from_str("❌ Device commitment not found. Browser data may have been cleared."))?;
+    
+    let commitment_bytes = hex::decode(&device_commitment_hex)
+        .map_err(|_| JsValue::from_str("Invalid commitment hex"))?;
+    let mut commitment_repr = [0u8; 32];
+    commitment_repr.copy_from_slice(&commitment_bytes);
+    let device_commitment_fp: Fp = Option::from(Fp::from_repr(commitment_repr))
+        .ok_or_else(|| JsValue::from_str("Invalid device commitment"))?;
+    
+    console_log!("✓ Device commitment loaded: {}...", &device_commitment_hex[..16]);
+    console_log!("✓ Device position: {}", device_position);
+    
+    // Fetch real device Merkle proof from server
+    console_log!("Fetching device Merkle proof from server...");
+    // Use Blake3 hash of account_id as consistent user identifier
+    let user_key = hex::encode(blake3::hash(&account_id.to_repr()).as_bytes());
+    
+    let device_proof_url = format!("{}/api/get-device-proof", server_url);
+    let device_proof_body = serde_json::json!({
+        "nullifier_hash": user_key,
+        "device_position": device_position
+    });
+    
+    let device_proof_opts = RequestInit::new();
+    device_proof_opts.set_method("POST");
+    device_proof_opts.set_mode(RequestMode::Cors);
+    device_proof_opts.set_body(&JsValue::from_str(&device_proof_body.to_string()));
+    
+    let device_proof_req = Request::new_with_str_and_init(&device_proof_url, &device_proof_opts)
+        .map_err(|e| JsValue::from_str(&format!("Request failed: {:?}", e)))?;
+    
+    device_proof_req.headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| JsValue::from_str(&format!("Header failed: {:?}", e)))?;
+    
+    let device_proof_resp_value = wasm_bindgen_futures::JsFuture::from(
+        window.fetch_with_request(&device_proof_req)
+    ).await.map_err(|e| JsValue::from_str(&format!("Fetch failed: {:?}", e)))?;
+    
+    let device_proof_resp: Response = device_proof_resp_value.dyn_into()
+        .map_err(|_| JsValue::from_str("Response cast failed"))?;
+    
+    let device_proof_json = wasm_bindgen_futures::JsFuture::from(
+        device_proof_resp.json().map_err(|e| JsValue::from_str(&format!("JSON failed: {:?}", e)))?
+    ).await.map_err(|e| JsValue::from_str(&format!("JSON future failed: {:?}", e)))?;
+    
+    #[derive(Deserialize)]
+    struct DeviceProofResponse {
+        success: bool,
+        device_merkle_path: Option<Vec<String>>,
+        device_tree_root: Option<String>,
+        error: Option<String>,
+    }
+    
+    let device_proof_data: DeviceProofResponse = serde_wasm_bindgen::from_value(device_proof_json)
+        .map_err(|e| JsValue::from_str(&format!("Deserialize failed: {}", e)))?;
+    
+    if !device_proof_data.success {
+        return Err(JsValue::from_str(&format!("Device proof fetch failed: {}", device_proof_data.error.unwrap_or_default())));
+    }
+    
+    let device_path_hex = device_proof_data.device_merkle_path
+        .ok_or_else(|| JsValue::from_str("No device path returned"))?;
+    let device_root_hex = device_proof_data.device_tree_root
+        .ok_or_else(|| JsValue::from_str("No device root returned"))?;
+    
+    // Parse device Merkle path
+    let mut device_merkle_path = [Fp::zero(); 10];
+    for (i, hex_str) in device_path_hex.iter().enumerate() {
+        if i >= 10 { break; }
+        let bytes = hex::decode(hex_str)
+            .map_err(|_| JsValue::from_str("Invalid device path hex"))?;
+        let mut repr = [0u8; 32];
+        repr.copy_from_slice(&bytes);
+        device_merkle_path[i] = Option::from(Fp::from_repr(repr))
+            .ok_or_else(|| JsValue::from_str("Invalid device path element"))?;
+    }
+    
+    let device_root_bytes = hex::decode(&device_root_hex)
+        .map_err(|_| JsValue::from_str("Invalid device root hex"))?;
+    let mut device_root_repr = [0u8; 32];
+    device_root_repr.copy_from_slice(&device_root_bytes);
+    let device_merkle_root_fp = Option::from(Fp::from_repr(device_root_repr))
+        .ok_or_else(|| JsValue::from_str("Invalid device root"))?;
+    
+    console_log!("✓ Device Merkle proof fetched ({} siblings)", device_path_hex.len());
+    console_log!("✓ Device root: {}...", &device_root_hex[..16]);
+    
+    let ecdsa_pubkey_bytes_clone = device_commitment_fp.to_repr().to_vec();
+    
+    // Get tree data
+    let tree_index = storage.get_item("legion_tree_index")
+        .map_err(|_| JsValue::from_str("Storage read failed"))?
+        .and_then(|s| s.parse::<usize>().ok())
+        .ok_or_else(|| JsValue::from_str("No tree_index found. Please register first."))?;
+    
+    let tree_json = storage.get_item("legion_merkle_tree")
+        .map_err(|_| JsValue::from_str("Storage read failed"))?
+        .ok_or_else(|| JsValue::from_str("No tree cached. Please download tree first."))?;
+    
+    let tree_leaves: Vec<String> = serde_json::from_str(&tree_json)
+        .map_err(|e| JsValue::from_str(&format!("Tree parse failed: {}", e)))?;
+    
+    let (merkle_path_fp, merkle_root_fp) = compute_merkle_path_sync(tree_index, &tree_leaves)?;
+    drop(tree_leaves);
+    
+    // Generate challenge
+    let mut challenge_bytes = [0u8; 32];
+    getrandom::getrandom(&mut challenge_bytes)
+        .map_err(|_| JsValue::from_str("RNG failed"))?;
+    let challenge_fp = Fp::from_uniform_bytes(&{
+        let mut buf = [0u8; 64];
+        buf[..32].copy_from_slice(&challenge_bytes);
+        buf[32..].copy_from_slice(&challenge_bytes);
+        buf
+    });
+    
+    let timestamp_u64 = (js_sys::Date::now() / 1000.0) as u64;
+    let timestamp_fp = Fp::from(timestamp_u64);
+    
+    // Compute nullifier
+    let nullifier_fp = poseidon::Hash::<_, poseidon::P128Pow5T3, poseidon::ConstantLength<2>, 3, 2>::init()
+        .hash([account_id, challenge_fp]);
+    
+    // Compute linkability tag
+    let mut link_hasher = blake3::Hasher::new();
+    link_hasher.update(b"LEGION_LINKABILITY_TAG_V1");
+    link_hasher.update(&ecdsa_pubkey_bytes_clone);
+    link_hasher.update(&nullifier_fp.to_repr());
+    let linkability_tag_bytes = link_hasher.finalize();
+    
+    let linkability_tag_fp = Fp::from_uniform_bytes(&{
+        let mut buf = [0u8; 64];
+        buf[..32].copy_from_slice(linkability_tag_bytes.as_bytes());
+        buf[32..].copy_from_slice(linkability_tag_bytes.as_bytes());
+        buf
+    });
+    
+    storage.set_item("legion_linkability_tag", &hex::encode(linkability_tag_fp.to_repr()))
+        .map_err(|e| JsValue::from_str(&format!("Storage failed: {:?}", e)))?;
+    
+    console_log!("Generating ZK proof (k={})...", k);
+    
+    // PROPER IMPLEMENTATION: Single account_id field (no duplication)
+    let circuit = AuthCircuit::new(
+        account_id,  // Single field for passwordless
+        user_leaf,
+        merkle_path_fp.try_into().map_err(|_| JsValue::from_str("Path conversion failed"))?,
+        tree_index as u64,
+        merkle_root_fp,
+        challenge_fp,
+        device_commitment_fp,
+        timestamp_fp,
+        device_commitment_fp,
+        device_merkle_path,
+        device_position as u64,
+        device_merkle_root_fp,
+        linkability_tag_fp,
+    )
+    .map_err(|e| JsValue::from_str(&format!("Circuit creation failed: {}", e)))?;
+    
+    let public_inputs = circuit.public_inputs();
+    
+    // Generate proof using cached params
+    use std::cell::RefCell;
+    thread_local! {
+        static CACHED_PROOF_GEN: RefCell<Option<(u32, ProofGenerator)>> = RefCell::new(None);
+    }
+    
+    let needs_generation = CACHED_PROOF_GEN.with(|cache| {
+        let cache_ref = cache.borrow();
+        if let Some((cached_k, _)) = *cache_ref {
+            if cached_k == k {
+                console_log!("✅ Using cached parameters (k={})", k);
+                return false;
+            }
+        }
+        true
+    });
+    
+    if needs_generation {
+        console_log!("⏳ Generating params for k={} (~30s)...", k);
+        let generator = ProofGenerator::new(k)
+            .map_err(|e| JsValue::from_str(&format!("ProofGenerator init failed: {}", e)))?;
+        CACHED_PROOF_GEN.with(|cache| {
+            *cache.borrow_mut() = Some((k, generator));
+        });
+    }
+    
+    let (verify_url, verify_opts) = CACHED_PROOF_GEN.with(|cache| -> Result<(String, RequestInit), JsValue> {
+        let mut cache_ref = cache.borrow_mut();
+        let (_, proof_gen) = cache_ref.as_mut().unwrap();
+        
+        console_log!("⏳ Generating proof...");
+        let proof_bytes = proof_gen.generate_proof(circuit, &public_inputs)
+            .map_err(|e| JsValue::from_str(&format!("Proof generation failed: {}", e)))?;
+        
+        console_log!("✓ Proof generated ({} bytes)", proof_bytes.len());
+        
+        let verify_url = format!("{}/api/verify-anonymous-proof", server_url);
+        let verify_body = serde_json::json!({
+            "proof": hex::encode(&proof_bytes),
+            "merkle_root": hex::encode(public_inputs[0].to_repr()),
+            "nullifier": hex::encode(public_inputs[1].to_repr()),
+            "challenge": hex::encode(public_inputs[2].to_repr()),
+            "client_pubkey": hex::encode(device_commitment_fp.to_repr()),
+            "timestamp": hex::encode(public_inputs[6].to_repr()),
+            "device_merkle_root": hex::encode(public_inputs[7].to_repr()),
+            "session_token": hex::encode(public_inputs[8].to_repr()),
+            "expiration_time": hex::encode(public_inputs[9].to_repr()),
+            "k": k,
+        });
+        
+        let verify_opts = RequestInit::new();
+        verify_opts.set_method("POST");
+        verify_opts.set_mode(RequestMode::Cors);
+        verify_opts.set_body(&JsValue::from_str(&verify_body.to_string()));
+        
+        Ok((verify_url, verify_opts))
+    })?;
+    
+    let verify_request = Request::new_with_str_and_init(&verify_url, &verify_opts)
+        .map_err(|e| JsValue::from_str(&format!("Request failed: {:?}", e)))?;
+    
+    verify_request.headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| JsValue::from_str(&format!("Header failed: {:?}", e)))?;
+    
+    let verify_resp_value = wasm_bindgen_futures::JsFuture::from(
+        window.fetch_with_request(&verify_request)
+    ).await.map_err(|e| JsValue::from_str(&format!("Fetch failed: {:?}", e)))?;
+    
+    let verify_resp: Response = verify_resp_value.dyn_into()
+        .map_err(|_| JsValue::from_str("Response cast failed"))?;
+    
+    let result_json = wasm_bindgen_futures::JsFuture::from(
+        verify_resp.json().map_err(|e| JsValue::from_str(&format!("JSON failed: {:?}", e)))?
+    ).await.map_err(|e| JsValue::from_str(&format!("JSON future failed: {:?}", e)))?;
+    
+    console_log!("✅ PASSWORDLESS AUTHENTICATION COMPLETE!");
+    
+    Ok(result_json)
+}
+
+// OLD: Username/Password registration (kept for compatibility)
 #[wasm_bindgen]
 pub async fn register_user(username: String, password: String, server_url: String) -> Result<JsValue, JsValue> {
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -722,6 +1138,11 @@ pub async fn verify_session(session_id: String, server_url: String) -> Result<Js
 }
 
 
+
+#[wasm_bindgen]
+pub async fn blake3_hash(data: &[u8]) -> String {
+    hex::encode(blake3::hash(data).as_bytes())
+}
 
 #[wasm_bindgen(start)]
 pub fn main() {

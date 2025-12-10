@@ -38,8 +38,7 @@ pub struct AuthConfig {
 #[allow(dead_code)]
 pub struct AuthCircuit {
     // Private witnesses - User identity
-    username_hash: Value<Fp>,
-    password_hash: Value<Fp>,
+    account_id: Value<Fp>,  // Single field for passwordless (BIP-39)
     stored_credential_hash: Value<Fp>,
     merkle_path: Value<[Fp; MERKLE_DEPTH]>,
     leaf_index: Value<Fp>,
@@ -59,8 +58,7 @@ pub struct AuthCircuit {
     pub device_merkle_root: Value<Fp>, // NEW: Device tree root
 
     // Raw values
-    username_hash_raw: Fp,
-    password_hash_raw: Fp,
+    account_id_raw: Fp,
     stored_credential_hash_raw: Fp,
     merkle_root_raw: Fp,
     nullifier_raw: Fp,
@@ -76,8 +74,7 @@ pub struct AuthCircuit {
 
 impl AuthCircuit {
     pub fn new(
-        username_hash: Fp,
-        password_hash: Fp,
+        account_id: Fp,  // Single field for passwordless
         stored_credential_hash: Fp,
         merkle_path: [Fp; MERKLE_DEPTH],
         leaf_index: u64,
@@ -95,15 +92,14 @@ impl AuthCircuit {
         let nullifier = poseidon::Hash::<
             _,
             poseidon::P128Pow5T3,
-            poseidon::ConstantLength<3>,
+            poseidon::ConstantLength<2>,
             WIDTH,
             RATE,
         >::init()
-        .hash([username_hash, password_hash, challenge]);
+        .hash([account_id, challenge]);
 
         Ok(Self {
-            username_hash: Value::known(username_hash),
-            password_hash: Value::known(password_hash),
+            account_id: Value::known(account_id),
             stored_credential_hash: Value::known(stored_credential_hash),
             merkle_path: Value::known(merkle_path),
             leaf_index: Value::known(Fp::from(leaf_index)),
@@ -117,8 +113,7 @@ impl AuthCircuit {
             client_pubkey: Value::known(client_pubkey),
             timestamp: Value::known(timestamp),
             device_merkle_root: Value::known(device_merkle_root),
-            username_hash_raw: username_hash,
-            password_hash_raw: password_hash,
+            account_id_raw: account_id,
             stored_credential_hash_raw: stored_credential_hash,
             merkle_root_raw: merkle_root,
             nullifier_raw: nullifier,
@@ -300,8 +295,7 @@ impl AuthCircuit {
 impl Default for AuthCircuit {
     fn default() -> Self {
         Self {
-            username_hash: Value::unknown(),
-            password_hash: Value::unknown(),
+            account_id: Value::unknown(),
             stored_credential_hash: Value::unknown(),
             merkle_path: Value::unknown(),
             leaf_index: Value::unknown(),
@@ -315,8 +309,7 @@ impl Default for AuthCircuit {
             client_pubkey: Value::unknown(),
             timestamp: Value::unknown(),
             device_merkle_root: Value::unknown(),
-            username_hash_raw: Fp::zero(),
-            password_hash_raw: Fp::zero(),
+            account_id_raw: Fp::zero(),
             stored_credential_hash_raw: Fp::zero(),
             merkle_root_raw: Fp::zero(),
             nullifier_raw: Fp::zero(),
@@ -442,17 +435,10 @@ impl Circuit<Fp> for AuthCircuit {
         mut layouter: impl Layouter<Fp>,
     ) -> Result<(), Error> {
         // Assign credentials
-        let username_cell = layouter.assign_region(
-            || "username",
+        let account_id_cell = layouter.assign_region(
+            || "account_id",
             |mut region| {
-                region.assign_advice(|| "username", config.advice[0], 0, || self.username_hash)
-            },
-        )?;
-
-        let password_cell = layouter.assign_region(
-            || "password",
-            |mut region| {
-                region.assign_advice(|| "password", config.advice[1], 0, || self.password_hash)
+                region.assign_advice(|| "account_id", config.advice[0], 0, || self.account_id)
             },
         )?;
 
@@ -468,12 +454,12 @@ impl Circuit<Fp> for AuthCircuit {
             },
         )?;
 
-        // CRITICAL: Compute credential hash from provided password
+        // CRITICAL: Compute credential hash from account_id (single field)
         let credential_hasher = PoseidonHash::<
             _,
             _,
             poseidon::P128Pow5T3,
-            poseidon::ConstantLength<2>,
+            poseidon::ConstantLength<1>,
             WIDTH,
             RATE,
         >::init(
@@ -483,7 +469,7 @@ impl Circuit<Fp> for AuthCircuit {
 
         let computed_credential_hash = credential_hasher.hash(
             layouter.namespace(|| "compute_credential"),
-            [username_cell.clone(), password_cell.clone()],
+            [account_id_cell.clone()],
         )?;
 
         // CRITICAL: Verify computed hash equals stored hash
@@ -649,12 +635,12 @@ impl Circuit<Fp> for AuthCircuit {
             },
         )?;
 
-        // Compute nullifier
+        // Compute nullifier (single field + challenge)
         let nullifier_hasher = PoseidonHash::<
             _,
             _,
             poseidon::P128Pow5T3,
-            poseidon::ConstantLength<3>,
+            poseidon::ConstantLength<2>,
             WIDTH,
             RATE,
         >::init(
@@ -664,7 +650,7 @@ impl Circuit<Fp> for AuthCircuit {
 
         let computed_nullifier = nullifier_hasher.hash(
             layouter.namespace(|| "compute_nullifier"),
-            [username_cell, password_cell, challenge_cell.clone()],
+            [account_id_cell, challenge_cell.clone()],
         )?;
 
 

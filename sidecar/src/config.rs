@@ -8,7 +8,6 @@ pub struct Config {
     pub tls: TlsConfig,
     pub auth: AuthConfig,
     pub zk: ZkConfig,
-    pub kms: crate::kms::KmsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,15 +71,17 @@ impl Default for Config {
                 proof_timeout_secs: 60,
                 batch_size: 10,
             },
-            kms: crate::kms::KmsConfig::default(),
+
         }
     }
 }
 
 impl Config {
-    pub fn load(path: &str) -> Result<Self> {
-        if std::path::Path::new(path).exists() {
-            let content = std::fs::read_to_string(path)
+    pub fn load() -> Result<Self> {
+        let path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+        
+        if std::path::Path::new(&path).exists() {
+            let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read config file: {}", path))?;
             
             toml::from_str(&content)
@@ -92,20 +93,15 @@ impl Config {
     }
     
     pub fn validate(&self) -> Result<()> {
-        if !self.tls.cert_path.exists() {
-            anyhow::bail!("TLS certificate file not found: {:?}", self.tls.cert_path);
-        }
-        
-        if !self.tls.key_path.exists() {
-            anyhow::bail!("TLS private key file not found: {:?}", self.tls.key_path);
-        }
-        
         if self.auth.hmac_key == "change-me-in-production" {
             tracing::warn!("Using default HMAC key - change this in production!");
         }
         
-        if self.server.port < 1024 && std::env::var("USER").unwrap_or_default() != "root" {
-            tracing::warn!("Port {} requires root privileges", self.server.port);
+        if self.server.port < 1024 {
+            #[cfg(unix)]
+            if std::env::var("USER").unwrap_or_default() != "root" {
+                tracing::warn!("Port {} requires root privileges", self.server.port);
+            }
         }
         
         Ok(())
