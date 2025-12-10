@@ -524,6 +524,9 @@
                         // Compute device commitment using Blake3 (ensures valid field element)
                         const { derive_account_id, blake3_hash } = await import('./pkg/legion_wasm_client.js');
                         const credIdBytes = new Uint8Array(credential.rawId);
+                        
+                        // CRITICAL: Must match server's device commitment format
+                        // Server expects: Blake3(credential_id) - simple format for passwordless
                         const deviceCommitment = await blake3_hash(credIdBytes);
                         console.log('Device commitment (Blake3):', deviceCommitment);
                         
@@ -745,6 +748,13 @@
                         button.textContent = originalText;
                         return;
                     }
+                    
+                    // DEBUG: Log device metadata
+                    console.log('DEBUG: Device metadata from localStorage:');
+                    console.log('  credential_id:', credentialId.substring(0, 32) + '...');
+                    console.log('  device_position:', localStorage.getItem('legion_device_position'));
+                    console.log('  device_commitment:', localStorage.getItem('legion_device_commitment'));
+                    console.log('  device_root:', localStorage.getItem('legion_device_root'));
                     
                     showStatus('loginStatus', `Touch fingerprint to login (k=${k})...`, 'info');
                     const startTime = performance.now();
