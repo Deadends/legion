@@ -24,24 +24,24 @@ This document provides a detailed, step-by-step visualization of how Legion impl
     ╚════════════════════════════════════════════════════════════╝
                                  │
     ┌──────────────────────────────────────────────────────────┐
-    │  Input: username = "alice"                               │
-    │         password = "secret123"                           │
+    │  Input: 24-word recovery phrase (BIP-39)                 │
+    │         "abandon abandon ... art"                        │
     │                                                          │
     │  Compute:                                                │
     │  ┌───────────────────────────────────────────────────┐   │
-    │  │ username_hash = Blake3("alice")                   │   │
-    │  │ → 32 bytes (fast, collision-resistant)            │   │
+    │  │ bip39_seed = BIP39.to_seed(mnemonic)              │   │
+    │  │ → 64 bytes (512-bit seed)                         │   │
     │  └───────────────────────────────────────────────────┘   │
     │                                                          │
     │  ┌───────────────────────────────────────────────────┐   │
-    │  │ password_hash = Argon2id("secret123")             │   │
-    │  │ → 32 bytes (memory-hard, GPU-resistant)           │   │
-    │  │ → Time: ~100ms, Memory: 64MB                      │   │
+    │  │ account_id = Blake3("LEGION_ACCOUNT_V2" ||        │   │
+    │  │                     bip39_seed)                   │   │
+    │  │ → 32 bytes (deterministic account ID)             │   │
     │  └───────────────────────────────────────────────────┘   │
     │                                                          │
     │  ┌───────────────────────────────────────────────────┐   │
-    │  │ credential_hash = username_hash || password_hash  │   │
-    │  │ → 64 bytes total                                  │   │
+    │  │ credential_hash = Poseidon(account_id)            │   │
+    │  │ → Field element for Merkle tree                   │   │
     │  └───────────────────────────────────────────────────┘   │
     └──────────────────────────────────────────────────────────┘
                                  │
@@ -493,7 +493,7 @@ Scenario: Attacker steals session_token
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| Credential Hashing | ~100ms | Argon2id (client-side) |
+| Credential Hashing | <1ms | Blake3 + BIP-39 (client-side) |
 | WebAuthn Key Gen | ~1s | User gesture required |
 | Nullifier Computation | <1ms | Poseidon hash |
 | ZK Proof Generation | ~4min | k=16, client-side |
@@ -529,7 +529,7 @@ Scenario: Attacker steals session_token
 | Brute Force | Rate limiting (5/hour) | ❌ Blocked (NEW v1.1.0) |
 | Stolen Device | Device revocation API | ❌ Blocked (NEW v1.1.0) |
 | Identity Leakage | tree_index (not credentials) | ❌ Prevented (NEW v1.1.0) |
-| Credential Stuffing | Argon2id + rate limiting | ❌ Mitigated |
+| Credential Stuffing | BIP-39 entropy + rate limiting | ❌ Mitigated |
 | Timing Attack | Constant-time circuit ops | ❌ No leakage |
 | Proof Forgery | Halo2 soundness (2^-128) | ❌ Infeasible |
 | Device Cloning | Hardware attestation | ❌ Detected |

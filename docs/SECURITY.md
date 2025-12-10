@@ -9,7 +9,7 @@ Legion ZK Auth implements zero-knowledge authentication with the following guara
 - **Soundness Error**: 2^-128 (forgery probability)
 - **Hash Functions**: Blake3 (credentials), Poseidon (circuit)
 - **Curves**: Pasta (Pallas/Vesta)
-- **Password Hashing**: Argon2id (memory-hard)
+- **Key Derivation**: BIP-39 (24-word mnemonic)
 
 ### Privacy Guarantees
 - **User Anonymity**: 1 of 2^20 (1,048,576) users
@@ -20,7 +20,7 @@ Legion ZK Auth implements zero-knowledge authentication with the following guara
 ### Attack Resistance
 - ✅ **Replay Attacks**: Prevented by nullifiers + timestamps
 - ✅ **Session Theft**: Prevented by linkability tag binding
-- ✅ **Credential Stuffing**: Argon2id + rate limiting
+- ✅ **Credential Stuffing**: BIP-39 entropy + rate limiting
 - ✅ **Timing Attacks**: Constant-time operations in circuit
 - ✅ **Sybil Attacks**: Device binding + nullifier tracking
 
@@ -124,7 +124,7 @@ We appreciate security researchers who help improve Legion:
 
 - [Halo2 Documentation](https://zcash.github.io/halo2/)
 - [WebAuthn Specification](https://www.w3.org/TR/webauthn-2/)
-- [Argon2 RFC](https://datatracker.ietf.org/doc/html/rfc9106)
+- [BIP-39 Specification](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 - [Blake3 Paper](https://github.com/BLAKE3-team/BLAKE3-specs)
 
 ## 📞 Contact

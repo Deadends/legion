@@ -20,12 +20,12 @@ This document provides detailed cryptographic specifications for Legion Zero-Kno
 - **Parameters**: P128Pow5T3 (128-bit security, power-of-5 S-box, 3 full rounds)
 - **Usage**: Merkle tree construction, nullifier generation, session token computation
 
-#### Argon2id
-- **Purpose**: Password-based key derivation
-- **Memory**: 64 MB default
-- **Iterations**: 3 default
-- **Parallelism**: 4 threads default
-- **Usage**: Secure password hashing before circuit input
+#### BIP-39
+- **Purpose**: Mnemonic recovery phrase generation and seed derivation
+- **Entropy**: 256 bits (24 words)
+- **Seed Size**: 512 bits (64 bytes)
+- **Standard**: Bitcoin Improvement Proposal 39
+- **Usage**: Passwordless account derivation
 
 ### Elliptic Curves
 
@@ -57,21 +57,21 @@ This document provides detailed cryptographic specifications for Legion Zero-Kno
 
 ### Credential Processing
 
-#### Username Hash Computation
+#### BIP-39 Mnemonic Generation
 ```
-username_hash = Blake3("LEGION_CREDENTIAL_V2" || "USERNAME" || username)
+entropy = random_256_bits()
+mnemonic = BIP39.from_entropy(entropy)  // 24 words
 ```
 
-#### Password Hash Computation
+#### Account ID Derivation
 ```
-salt = Blake3(username)[0..16]
-argon2_output = Argon2id(password, salt, memory=64MB, iterations=3, parallelism=4)
-password_hash = Blake3("LEGION_CREDENTIAL_V2" || "PASSWORD" || argon2_output)
+bip39_seed = BIP39.to_seed(mnemonic)  // 512-bit seed
+account_id = Blake3("LEGION_ACCOUNT_V2" || bip39_seed)
 ```
 
 #### User Leaf Generation
 ```
-user_leaf = Poseidon(username_hash, password_hash)
+user_leaf = Poseidon(account_id)  // Single field element
 ```
 
 ### Anonymity Set Construction

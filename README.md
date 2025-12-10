@@ -553,7 +553,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [Halo2](https://github.com/zcash/halo2) - ZK proof system
 - [WebAuthn](https://www.w3.org/TR/webauthn-2/) - Hardware authentication
 - [Blake3](https://github.com/BLAKE3-team/BLAKE3) - Fast hashing
-- [Argon2](https://github.com/P-H-C/phc-winner-argon2) - Password hashing
+- [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) - Mnemonic recovery phrases
 
 ## 📞 Contact
 
