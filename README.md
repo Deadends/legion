@@ -168,7 +168,7 @@ python3 -m http.server 8000
 │  │  (Vanilla JS)  │  │  (Rust→WASM)    │  │  (IndexedDB)             │  │
 │  ├────────────────┤  ├─────────────────┤  ├──────────────────────────┤  │
 │  │ • Registration │  │ • Blake3 Hash   │  │ • Full Merkle Tree       │  │
-│  │ • Login Form   │  │ • Argon2id KDF  │  │ • Device Trees           │  │
+│  │ • Login Form   │  │ • BIP-39 Derive │  │ • Device Trees           │  │
 │  │ • Session UI   │  │ • Halo2 Prover  │  │ • WebAuthn Credentials   │  │
 │  │ • Tree Sync    │  │ • Merkle Proof  │  │ • Tree Version Cache     │  │
 │  └────────────────┘  │ • Ring Sigs     │  └──────────────────────────┘  │
@@ -211,7 +211,7 @@ python3 -m http.server 8000
 │  │                   Cryptographic Layer                           │     │
 │  ├─────────────────────────────────────────────────────────────────┤     │
 │  │ • Halo2 Verifier (PLONK) │ • Poseidon Hash (ZK-friendly)        │     │
-│  │ • Blake3 (credential)    │ • Argon2id (password KDF)            │     │
+│  │ • Blake3 (credential)    │ • BIP-39 (recovery phrase)           │     │
 │  │ • Merkle Tree (2^20)     │ • Device Trees (2^10 per user)       │     │
 │  │ • Ring Signature Verify  │ • WebAuthn Signature Verify          │     │
 │  └─────────────────────────────────────────────────────────────────┘     │
